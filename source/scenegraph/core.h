@@ -20,26 +20,26 @@ namespace emp {
       virtual ~Node() {}
 
       virtual emp::math::Vec<float, D> UpdateMinSize(
-        const graphics::Graphics& g) {
+        const graphics::Graphics &g) {
         return {0};
       }
 
       // This should always be called soon before a call to render relative
       virtual emp::math::Vec<float, D> UpdateSize(
-        const graphics::Graphics& g, const emp::math::Vec<float, D>& max_size) {
+        const graphics::Graphics &g, const emp::math::Vec<float, D> &max_size) {
         return max_size;
       }
 
       virtual void RenderRelative(
-        emp::graphics::Graphics& g, const math::Mat4x4f& transform,
-        const emp::math::Vec<float, D>& allocated_size) = 0;
+        emp::graphics::Graphics &g, const math::Mat4x4f &transform,
+        const emp::math::Vec<float, D> &allocated_size) = 0;
     };
 
     namespace emp__impl_emp_scenegraph_core {
 
       constexpr decltype(auto) GetMajorAxis(
-        emp::math::Vec<float, 2>& dest,
-        const emp::math::Vec<float, 2>& source) {}
+        emp::math::Vec<float, 2> &dest,
+        const emp::math::Vec<float, 2> &source) {}
     }  // namespace emp__impl_emp_scenegraph_core
 
     template <size_t D>
@@ -51,16 +51,16 @@ namespace emp {
       virtual ~Stack() {}
 
       void RenderRelative(
-        emp::graphics::Graphics& g, const math::Mat4x4f& transform,
-        const emp::math::Vec<float, D>& allocated_size) override {
-        for (auto& child : children) {
+        emp::graphics::Graphics &g, const math::Mat4x4f &transform,
+        const emp::math::Vec<float, D> &allocated_size) override {
+        for (auto &child : children) {
           if (child) {
             child->RenderRelative(g, transform, allocated_size);
           }
         }
       }
 
-      Stack& Append(std::shared_ptr<Node<D>> node) {
+      Stack &Append(std::shared_ptr<Node<D>> node) {
         children.emplace_back(node);
         return *this;
       }
@@ -88,8 +88,8 @@ namespace emp {
     namespace emp__impl_emp_scenegraph_core {
 
       template <typename V = emp::math::Vec<float, 2>>
-      constexpr decltype(auto) GetMajorAxis(const FlowDirection<2>& direction,
-                                            V&& v) {
+      constexpr decltype(auto) GetMajorAxis(const FlowDirection<2> &direction,
+                                            V &&v) {
         switch (direction.axis) {
           case FlowDirection<2>::X:
             return std::forward<V>(v).x();
@@ -99,8 +99,8 @@ namespace emp {
       }
 
       template <typename V = emp::math::Vec<float, 3>>
-      constexpr decltype(auto) GetMajorAxis(const FlowDirection<3>& direction,
-                                            V&& v) {
+      constexpr decltype(auto) GetMajorAxis(const FlowDirection<3> &direction,
+                                            V &&v) {
         switch (direction.axis) {
           case FlowDirection<3>::X:
             return std::forward<V>(v).x();
@@ -111,9 +111,9 @@ namespace emp {
         }
       }
 
-      constexpr decltype(auto) MaxMinorAxes(const FlowDirection<2>& direction,
-                                            emp::math::Vec2f& dest,
-                                            const emp::math::Vec2f& source) {
+      constexpr decltype(auto) MaxMinorAxes(const FlowDirection<2> &direction,
+                                            emp::math::Vec2f &dest,
+                                            const emp::math::Vec2f &source) {
         switch (direction.axis) {
           case FlowDirection<2>::X:
             dest.y() = std::max(dest.y(), source.y());
@@ -124,9 +124,9 @@ namespace emp {
         }
       }
 
-      constexpr decltype(auto) MaxMinorAxes(const FlowDirection<3>& direction,
-                                            emp::math::Vec3f& dest,
-                                            const emp::math::Vec3f& source) {
+      constexpr decltype(auto) MaxMinorAxes(const FlowDirection<3> &direction,
+                                            emp::math::Vec3f &dest,
+                                            const emp::math::Vec3f &source) {
         switch (direction.axis) {
           case FlowDirection<3>::X:
             dest.y() = std::max(dest.y(), source.y());
@@ -144,8 +144,8 @@ namespace emp {
       }
 
       constexpr emp::math::Region<float, 2> GetMajorAxisRegion(
-        const FlowDirection<2>& direction,
-        const emp::math::Region<float, 2>& max_region, float major_start,
+        const FlowDirection<2> &direction,
+        const emp::math::Region<float, 2> &max_region, float major_start,
         float major_length) {
         auto min = max_region.min;
         auto max = max_region.max;
@@ -165,8 +165,8 @@ namespace emp {
 
       template <size_t D>
       constexpr emp::math::Vec<float, D> GetSize(
-        const FlowDirection<D>& direction,
-        const emp::math::Vec<float, D>& max_size, float major_length) {
+        const FlowDirection<D> &direction,
+        const emp::math::Vec<float, D> &max_size, float major_length) {
         auto size = max_size;
 
         GetMajorAxis(direction, size) = major_length;
@@ -197,20 +197,20 @@ namespace emp {
 
       public:
       template <typename FD = FlowDirection<D>>
-      Flow(bool expands = false, FD&& direction = {FlowDirection<D>::X})
+      Flow(bool expands = false, FD &&direction = {FlowDirection<D>::X})
         : expands(expands), direction({std::forward<FD>(direction)}) {}
 
       virtual ~Flow() {}
 
-      Flow& Append(std::shared_ptr<Node<D>> node, float weight = 1) {
+      Flow &Append(std::shared_ptr<Node<D>> node, float weight = 1) {
         children.emplace_back(node, weight);
         return *this;
       }
 
       emp::math::Vec<float, D> UpdateMinSize(
-        const graphics::Graphics& g) override {
+        const graphics::Graphics &g) override {
         emp::math::Vec<float, D> min_size{0};
-        for (auto& child : children) {
+        for (auto &child : children) {
           if (child.node && child.weight >= 0) {
             child.min_size = child.node->UpdateMinSize(g);
 
@@ -226,12 +226,12 @@ namespace emp {
       }
 
       emp::math::Vec<float, D> UpdateSize(
-        const graphics::Graphics& g,
-        const emp::math::Vec<float, D>& max_size) override {
+        const graphics::Graphics &g,
+        const emp::math::Vec<float, D> &max_size) override {
         auto min_size = UpdateMinSize(g);
 
         float total_weight = 0;
-        for (auto& child : children) {
+        for (auto &child : children) {
           if (child.node) {
             total_weight += std::abs(child.weight);
           }
@@ -244,7 +244,7 @@ namespace emp {
 
         size = {0};
 
-        for (auto& child : children) {
+        for (auto &child : children) {
           if (child.node) {
             // Each child is given as much room as it wants on the minor axes,
             // and on the major axis it gets (free space) * (its share) + (the
@@ -284,14 +284,14 @@ namespace emp {
       }
 
       void RenderRelative(
-        emp::graphics::Graphics& g, const math::Mat4x4f& transform,
-        const emp::math::Vec<float, D>& allocated_size) override {
+        emp::graphics::Graphics &g, const math::Mat4x4f &transform,
+        const emp::math::Vec<float, D> &allocated_size) override {
         emp::math::Vec<float, D> position;
         emp__impl_emp_scenegraph_core::GetMajorAxis(direction, position) =
           emp__impl_emp_scenegraph_core::GetMajorAxis(direction,
                                                       allocated_size);
 
-        for (auto& child : children) {
+        for (auto &child : children) {
           if (child.node) {
             emp__impl_emp_scenegraph_core::GetMajorAxis(direction, position) -=
               emp__impl_emp_scenegraph_core::GetMajorAxis(direction,
@@ -305,22 +305,22 @@ namespace emp {
 
     template <size_t D>
     class Stage {
-      math::Region<float, D> region;
       std::shared_ptr<Node<D>> root;
 
       public:
-      Stage(const math::Region<float, D>& region) : region(region) {}
+      Stage() {}
 
       void SetRoot(std::shared_ptr<Node<D>> root) { this->root = root; }
 
       template <typename C, typename... U>
-      std::shared_ptr<C> MakeRoot(U&&... args) {
+      std::shared_ptr<C> MakeRoot(U &&... args) {
         auto root = std::make_shared<C>(std::forward<U>(args)...);
         this->root = root;
         return root;
       }
 
-      void Render(emp::graphics::Graphics& g) {
+      void Render(emp::graphics::Graphics &g,
+                  const math::Region<float, D> &region) {
         if (root) {
           root->UpdateSize(g, region.extents());
           root->RenderRelative(g, math::Mat4x4f::Identity(), region.extents());
@@ -335,17 +335,17 @@ namespace emp {
       float size;
 
       public:
-      Text(const std::string& text, float size = 16) : text(text), size(size) {}
+      Text(const std::string &text, float size = 16) : text(text), size(size) {}
 
       virtual ~Text() {}
 
       emp::math::Vec<float, D> UpdateMinSize(
-        const graphics::Graphics& g) override {
+        const graphics::Graphics &g) override {
         return g.Measure(text, size);
       }
 
-      void RenderRelative(graphics::Graphics& g, const math::Mat4x4f& transform,
-                          const math::Vec<float, D>& allocated_size) override {
+      void RenderRelative(graphics::Graphics &g, const math::Mat4x4f &transform,
+                          const math::Vec<float, D> &allocated_size) override {
         g.Text()
           .Draw({
             emp::graphics::Text = text,

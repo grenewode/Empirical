@@ -38,7 +38,7 @@ namespace emp {
       std::vector<emp::math::Vec3f> verticies;
       std::vector<Face> faces;
 
-      static Mesh Region(const emp::math::Region2f& region) {
+      static Mesh Region(const emp::math::Region2f &region) {
         emp::math::Vec3f bottom_left{region.min.x(), region.min.y(), 0};
         emp::math::Vec3f bottom_right{region.max.x(), region.min.y(), 0};
         emp::math::Vec3f upper_right{region.max.x(), region.max.y(), 0};
@@ -48,7 +48,7 @@ namespace emp {
                 {{0, 3, 1}, {3, 2, 1}}};
       }
       static Mesh Polygon(size_t vertex_count,
-                          const emp::math::Vec2f& radius = {0.5, 0.5}) {
+                          const emp::math::Vec2f &radius = {0.5, 0.5}) {
         Mesh mesh;
         int first = 0;
         for (auto i = 0; i < vertex_count; ++i) {
@@ -100,15 +100,15 @@ namespace emp {
       std::vector<instance_attributes_type> draw_queue;
 
       public:
-      template <typename S = const char*>
-      FillRenderer(opengl::GLCanvas& canvas,
-                   S&& fill_shader = "DefaultSolidColor")
+      template <typename S = const char *>
+      FillRenderer(opengl::GLCanvas &canvas,
+                   S &&fill_shader = "DefaultSolidColor")
         : fill_shader(std::forward<S>(fill_shader)),
           vao(canvas.MakeVAO()),
           gpu_vertex_buffer(canvas.makeBuffer<opengl::BufferType::Array>()),
           gpu_elements_buffer(
             canvas.makeBuffer<opengl::BufferType::ElementArray>()) {
-        this->fill_shader.OnSet([this](auto&) {
+        this->fill_shader.OnSet([this](auto &) {
           fill_shader_uniforms.model = this->fill_shader->Uniform("model");
           fill_shader_uniforms.view = this->fill_shader->Uniform("view");
           fill_shader_uniforms.projection =
@@ -122,17 +122,17 @@ namespace emp {
         });
       }
 
-      void BeginBatch(const RenderSettings& settings, const Mesh& mesh) {
+      void BeginBatch(const RenderSettings &settings, const Mesh &mesh) {
         auto first = 0;
 
         gpu_elements_buffer.Clear();
         gpu_vertex_buffer.Clear();
 
-        for (auto& vertex : mesh.verticies) {
+        for (auto &vertex : mesh.verticies) {
           gpu_vertex_buffer.EmplaceData(vertex);
         }
 
-        for (auto& face : mesh.faces) {
+        for (auto &face : mesh.faces) {
           gpu_elements_buffer.PushData(face.a);
           gpu_elements_buffer.PushData(face.b);
           gpu_elements_buffer.PushData(face.c);
@@ -148,12 +148,12 @@ namespace emp {
       }
 
       template <typename I = instance_attributes_type>
-      void Instance(I&& attrs) {
+      void Instance(I &&attrs) {
         draw_queue.emplace_back(std::forward<I>(attrs));
       }
 
       template <typename I = instance_attributes_type>
-      void Instance(I&& attrs, float width, float height) {
+      void Instance(I &&attrs, float width, float height) {
         Transform::Get(attrs) *= emp::math::Mat4x4f::Scale(width, height, 1);
 
         draw_queue.emplace_back(std::forward<I>(attrs));
@@ -169,7 +169,7 @@ namespace emp {
         fill_shader->Use();
         vao.bind();
 
-        for (auto& attrs : draw_queue) {
+        for (auto &attrs : draw_queue) {
           fill_shader_uniforms.model = attrs.GetTransform();
           fill_shader_uniforms.fill = attrs.GetFill();
 
@@ -204,8 +204,8 @@ namespace emp {
                      TextValue<std::string>, TextSizeValue<float>>;
 
       template <typename F, typename S = std::string>
-      TextRenderer(opengl::GLCanvas& canvas, F&& font,
-                   S&& shader = "DefaultFont")
+      TextRenderer(opengl::GLCanvas &canvas, F &&font,
+                   S &&shader = "DefaultFont")
         : vao(canvas.MakeVAO()),
           vertices_buffer(canvas.makeBuffer<opengl::BufferType::Array>()),
           font(std::forward<F>(font)),
@@ -213,7 +213,7 @@ namespace emp {
         using namespace emp::opengl;
         using namespace emp::math;
 
-        this->shader.OnSet([this](auto& value) {
+        this->shader.OnSet([this](auto &value) {
           shader_uniforms.model = this->shader->Uniform("model");
           shader_uniforms.view = this->shader->Uniform("view");
           shader_uniforms.projection = this->shader->Uniform("projection");
@@ -227,28 +227,36 @@ namespace emp {
         });
       }
 
-      void BeginBatch(const RenderSettings& settings) {
+      void BeginBatch(const RenderSettings &settings) {
         this->shader->Use();
         shader_uniforms.projection = settings.projection;
         shader_uniforms.view = settings.view;
       }
 
       emp::math::Vec2f Measure(
-        const std::string& text, float text_size,
+        const std::string &text, float text_size,
         TextDirections direction = TextDirections::Horizontal) const {
         float scale = text_size / font->atlas_height;
         emp::math::Vec2f cursor{0, 0};
-
-        for (auto& c : text) {
+        bool first = true;
+        for (auto &c : text) {
           auto info = font->Lookup(c);
 
           switch (direction) {
-              // Advance the cursor by the size of the character
+            // Advance the cursor by the size of the character
             case TextDirections::Horizontal:
+              if (first) {
+                cursor.x() = info.bitmap_size.x() * scale;
+                first = false;
+              }
               cursor.x() += info.cursor_advance.x() * scale;
               cursor.y() = std::max(cursor.y(), info.bitmap_size.y() * scale);
               break;
             case TextDirections::Vertical:
+              if (first) {
+                cursor.y() = info.bitmap_size.y() * scale;
+                first = false;
+              }
               cursor.x() = std::max(cursor.x(), info.bitmap_size.x() * scale);
               cursor.y() += info.cursor_advance.y() * scale;
               break;
@@ -258,7 +266,7 @@ namespace emp {
         return cursor;
       }
 
-      void Instance(const instance_attributes_type& attrs) {
+      void Instance(const instance_attributes_type &attrs) {
         using namespace emp::opengl;
         using namespace emp::math;
 
@@ -268,7 +276,7 @@ namespace emp {
         float scale = TextSize::Get(attrs) / font->atlas_height;
 
         int i = 0;
-        for (auto& c : attrs.GetText()) {
+        for (auto &c : attrs.GetText()) {
           auto info = font->Lookup(c);
           auto lcursor = cursor;
           // Calculate the start of the next character
@@ -321,19 +329,19 @@ namespace emp {
     template <typename R>
     class Pen {
       private:
-      R* renderer;
+      R *renderer;
 
       public:
       using instance_attributes_type = typename R::instance_attributes_type;
 
       template <typename... T>
-      Pen(R* renderer, const RenderSettings& settings, T&&... args)
+      Pen(R *renderer, const RenderSettings &settings, T &&... args)
         : renderer(renderer) {
         renderer->BeginBatch(settings, std::forward<T>(args)...);
       }
 
       template <typename I, typename... U>
-      Pen& Data(I begin, I end, const tools::Attrs<U...>& transform) {
+      Pen &Data(I begin, I end, const tools::Attrs<U...> &transform) {
         for (; begin != end; ++begin) {
           Draw(transform(*begin));
         }
@@ -341,7 +349,7 @@ namespace emp {
       }
 
       template <typename T0 = instance_attributes_type, typename... T>
-      Pen& Draw(T0&& args0, T&&... args) {
+      Pen &Draw(T0 &&args0, T &&... args) {
         renderer->Instance({std::forward<T0>(args0), std::forward<T>(args)...});
         return *this;
       }
@@ -358,7 +366,7 @@ namespace emp {
       std::shared_ptr<scenegraph::Eye> eye;
 
       template <typename F>
-      Graphics(opengl::GLCanvas& canvas, F&& font,
+      Graphics(opengl::GLCanvas &canvas, F &&font,
                std::shared_ptr<scenegraph::Camera> camera,
                std::shared_ptr<scenegraph::Eye> eye)
         : fill_renderer(canvas),
@@ -366,13 +374,13 @@ namespace emp {
           camera(camera),
           eye(eye) {}
 
-      Graphics(const Graphics&) = delete;
-      Graphics(Graphics&&) = delete;
+      Graphics(const Graphics &) = delete;
+      Graphics(Graphics &&) = delete;
 
-      Graphics& operator=(const Graphics&) = delete;
-      Graphics& operator=(Graphics&&) = delete;
+      Graphics &operator=(const Graphics &) = delete;
+      Graphics &operator=(Graphics &&) = delete;
 
-      auto Measure(const std::string& text, float text_size) const {
+      auto Measure(const std::string &text, float text_size) const {
         return text_renderer.Measure(text, text_size);
       }
 
@@ -381,11 +389,11 @@ namespace emp {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       }
 
-      void Clear(const opengl::Color& color) {
+      void Clear(const opengl::Color &color) {
         Clear(color.r, color.g, color.b, color.a);
       }
 
-      Pen<FillRenderer> Fill(const Mesh& mesh) {
+      Pen<FillRenderer> Fill(const Mesh &mesh) {
         return {&fill_renderer,
                 {camera->GetProjection(), eye->CalculateView()},
                 mesh};
@@ -393,7 +401,7 @@ namespace emp {
 
       template <typename A0 = typename FillRenderer::instance_attributes_type,
                 typename... A>
-      void DrawFilled(const Mesh& mesh, A0&& attributes, A&&... args) {
+      void DrawFilled(const Mesh &mesh, A0 &&attributes, A &&... args) {
         Fill(mesh)
           .Draw(std::forward<A0>(attributes), std::forward<A>(args)...)
           .Flush();

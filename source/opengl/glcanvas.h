@@ -92,10 +92,10 @@ namespace emp {
 #else
         Modifiers(int mod = 0) : mod(mod) {}
 #endif
-        Modifiers(const Modifiers&) = default;
-        Modifiers(Modifiers&&) = default;
-        Modifiers& operator=(const Modifiers&) = default;
-        Modifiers& operator=(Modifiers&&) = default;
+        Modifiers(const Modifiers &) = default;
+        Modifiers(Modifiers &&) = default;
+        Modifiers &operator=(const Modifiers &) = default;
+        Modifiers &operator=(Modifiers &&) = default;
 
 #ifdef __EMSCRIPTEN__
         void set_shift(bool value) { shift_set = value; }
@@ -122,13 +122,13 @@ namespace emp {
       Modifiers modifiers;
 
       MouseEvent() : position(0, 0), button{Button::Left, false, false} {}
-      MouseEvent(double x, double y, const Button& button,
-                 const Modifiers& modifiers = {})
+      MouseEvent(double x, double y, const Button &button,
+                 const Modifiers &modifiers = {})
         : position(x, y), button(button), modifiers(modifiers) {}
     };
 
-    std::ostream& operator<<(std::ostream& out,
-                             const MouseEvent::Modifiers& mod) {
+    std::ostream &operator<<(std::ostream &out,
+                             const MouseEvent::Modifiers &mod) {
       if (mod.shift()) out << "Shift";
       if (mod.control()) out << "Ctrl";
       if (mod.alt()) out << "Alt";
@@ -136,8 +136,8 @@ namespace emp {
       return out;
     }
 
-    std::ostream& operator<<(std::ostream& out,
-                             const MouseEvent::Button::Id& id) {
+    std::ostream &operator<<(std::ostream &out,
+                             const MouseEvent::Button::Id &id) {
       switch (id) {
         case MouseEvent::Button::Left:
           return out << "Left";
@@ -162,14 +162,14 @@ namespace emp {
       }
     }
 
-    std::ostream& operator<<(std::ostream& out,
-                             const MouseEvent::Button& button) {
+    std::ostream &operator<<(std::ostream &out,
+                             const MouseEvent::Button &button) {
       return out << button.button << "["
                  << (button.wasPressed ? "PRESSED" : "RELEASED") << " -> "
                  << (button.pressed ? "PRESSED" : "RELEASED") << "]";
     }
 
-    std::ostream& operator<<(std::ostream& out, const MouseEvent& event) {
+    std::ostream &operator<<(std::ostream &out, const MouseEvent &event) {
       return out << "@" << event.position << ": " << event.button << ": "
                  << event.modifiers;
     }
@@ -182,13 +182,13 @@ namespace emp {
 
       public:
       Event() {}
-      Event(const Event&) = delete;
-      Event(Event&&) = delete;
-      Event& operator=(const Event&) = delete;
-      Event& operator=(Event&&) = delete;
+      Event(const Event &) = delete;
+      Event(Event &&) = delete;
+      Event &operator=(const Event &) = delete;
+      Event &operator=(Event &&) = delete;
 
       template <typename... U>
-      void fire(U&&... args) {
+      void fire(U &&... args) {
         if (listeners.empty()) return;
 
         for (size_t i = 0; i < listeners.size() - 1; ++i) {
@@ -198,21 +198,21 @@ namespace emp {
       }
 
       template <typename... U>
-      void operator()(U&&... args) {
+      void operator()(U &&... args) {
         fire(std::forward<U>(args)...);
       }
 
       template <typename L>
       void bind(L listener) {
-        listeners.push_back(listener);
+        listeners.emplace_back(listener);
       }
 
       template <typename L>
-      bool unbind(const L& listener) {
+      bool unbind(const L &listener) {
         auto location =
           std::find_if(listeners.begin(), listeners.end(),
                        [listener = std::forward<L>(listener)](
-                         const auto& other) { return other == listener; });
+                         const auto &other) { return other == listener; });
         if (location != listeners.end()) {
           listeners.erase(location);
           return true;
@@ -224,21 +224,21 @@ namespace emp {
     template <typename Fn>
     class EventHandle {
       private:
-      Event<Fn>* event;
+      Event<Fn> *event;
 
       public:
-      EventHandle(Event<Fn>* event) : event(event) {}
-      EventHandle(const EventHandle&) = delete;
-      EventHandle(EventHandle&&) = delete;
-      EventHandle& operator=(const EventHandle&) = delete;
-      EventHandle& operator=(EventHandle&&) = delete;
+      EventHandle(Event<Fn> *event) : event(event) {}
+      EventHandle(const EventHandle &) = delete;
+      EventHandle(EventHandle &&) = delete;
+      EventHandle &operator=(const EventHandle &) = delete;
+      EventHandle &operator=(EventHandle &&) = delete;
 
       template <typename L>
-      void bind(L&& listener) {
+      void bind(L &&listener) {
         event->bind(std::forward<L>(listener));
       }
       template <typename L>
-      bool unbind(L&& listener) {
+      bool unbind(L &&listener) {
         return event->unbind(std::forward<L>(listener));
       }
     };
@@ -251,8 +251,8 @@ namespace emp {
   EventHandle<sig> on_##name##_event{&name##_event};
 
     class GLCanvas {
-      ADD_EVENT(mouse, void(GLCanvas&, const MouseEvent&))
-      ADD_EVENT(resize, void(GLCanvas&, int, int))
+      ADD_EVENT(mouse, void(GLCanvas &, const MouseEvent &))
+      ADD_EVENT(resize, void(GLCanvas &, int, int))
 
       private:
       int width, height;
@@ -263,7 +263,7 @@ namespace emp {
       std::string id;
       EMSCRIPTEN_WEBGL_CONTEXT_HANDLE context;
 #else
-      GLFWwindow* window = nullptr;
+      GLFWwindow *window = nullptr;
 #endif
 
       void resizeViewport(float width, float height) {
@@ -284,7 +284,7 @@ namespace emp {
       }
 
       public:
-      GLCanvas(int width, int height, const char* title = "empirical")
+      GLCanvas(int width, int height, const char *title = "empirical")
         : width(width),
           height(height)
 #ifdef __EMSCRIPTEN__
@@ -301,8 +301,8 @@ namespace emp {
 
         emscripten_set_resize_callback(
           0, this, false,
-          [](int, const EmscriptenUiEvent* event, void* data_ptr) -> int {
-            auto& me = *static_cast<GLCanvas*>(data_ptr);
+          [](int, const EmscriptenUiEvent *event, void *data_ptr) -> int {
+            auto &me = *static_cast<GLCanvas *>(data_ptr);
             int width = EM_ASM_INT(
               {
                 const id = Module.Pointer_stringify($0);
@@ -324,8 +324,8 @@ namespace emp {
           });
         emscripten_set_mousedown_callback(
           title, this, false,
-          [](int, const EmscriptenMouseEvent* event, void* data_ptr) -> int {
-            auto& me = *static_cast<GLCanvas*>(data_ptr);
+          [](int, const EmscriptenMouseEvent *event, void *data_ptr) -> int {
+            auto &me = *static_cast<GLCanvas *>(data_ptr);
             me.lastMouseEvent.position.x() = event->clientX;
             me.lastMouseEvent.position.y() = event->clientY;
 
@@ -341,8 +341,8 @@ namespace emp {
 
         emscripten_set_mouseup_callback(
           title, this, false,
-          [](int, const EmscriptenMouseEvent* event, void* data_ptr) -> int {
-            auto& me = *static_cast<GLCanvas*>(data_ptr);
+          [](int, const EmscriptenMouseEvent *event, void *data_ptr) -> int {
+            auto &me = *static_cast<GLCanvas *>(data_ptr);
             me.lastMouseEvent.position.x() = event->clientX;
             me.lastMouseEvent.position.y() = event->clientY;
 
@@ -358,8 +358,8 @@ namespace emp {
 
         emscripten_set_mousemove_callback(
           title, this, false,
-          [](int, const EmscriptenMouseEvent* event, void* data_ptr) -> int {
-            auto& me = *static_cast<GLCanvas*>(data_ptr);
+          [](int, const EmscriptenMouseEvent *event, void *data_ptr) -> int {
+            auto &me = *static_cast<GLCanvas *>(data_ptr);
             me.lastMouseEvent.position.x() = event->clientX;
             me.lastMouseEvent.position.y() = event->clientY;
 
@@ -382,9 +382,9 @@ namespace emp {
         glfwSetWindowUserPointer(window, this);
 
         glfwSetFramebufferSizeCallback(
-          window, [](GLFWwindow* window, int width, int height) {
-            GLCanvas* me =
-              static_cast<GLCanvas*>(glfwGetWindowUserPointer(window));
+          window, [](GLFWwindow *window, int width, int height) {
+            GLCanvas *me =
+              static_cast<GLCanvas *>(glfwGetWindowUserPointer(window));
 
             me->width = width;
             me->height = height;
@@ -394,9 +394,9 @@ namespace emp {
           });
 
         glfwSetCursorPosCallback(
-          window, [](GLFWwindow* window, double xpos, double ypos) {
-            GLCanvas* me =
-              static_cast<GLCanvas*>(glfwGetWindowUserPointer(window));
+          window, [](GLFWwindow *window, double xpos, double ypos) {
+            GLCanvas *me =
+              static_cast<GLCanvas *>(glfwGetWindowUserPointer(window));
 
             me->lastMouseEvent.position.x() = xpos;
             me->lastMouseEvent.position.y() = ypos;
@@ -406,9 +406,9 @@ namespace emp {
           });
 
         glfwSetMouseButtonCallback(
-          window, [](GLFWwindow* window, int b, int action, int mods) {
-            GLCanvas* me =
-              static_cast<GLCanvas*>(glfwGetWindowUserPointer(window));
+          window, [](GLFWwindow *window, int b, int action, int mods) {
+            GLCanvas *me =
+              static_cast<GLCanvas *>(glfwGetWindowUserPointer(window));
             auto button{static_cast<MouseEvent::Button::Id>(b)};
 
             me->lastMouseEvent.button.wasPressed =
@@ -443,15 +443,15 @@ namespace emp {
       }
 
 #ifdef __EMSCRIPTEN__
-      GLCanvas(const char* title = "empirical")
+      GLCanvas(const char *title = "empirical")
         : GLCanvas(getWindowWidth(), getWindowHeight(), title) {}
 #else
-      GLCanvas(const char* title = "empirical") : GLCanvas(800, 600, title) {}
+      GLCanvas(const char *title = "empirical") : GLCanvas(800, 600, title) {}
 #endif
-      GLCanvas(const GLCanvas&) = delete;
-      GLCanvas(GLCanvas&& other) = delete;
-      GLCanvas& operator=(const GLCanvas&) = delete;
-      GLCanvas& operator=(GLCanvas&& other) = delete;
+      GLCanvas(const GLCanvas &) = delete;
+      GLCanvas(GLCanvas &&other) = delete;
+      GLCanvas &operator=(const GLCanvas &) = delete;
+      GLCanvas &operator=(GLCanvas &&other) = delete;
 
       ~GLCanvas() {
 #ifdef __EMSCRIPTEN__
@@ -465,22 +465,22 @@ namespace emp {
       }
 
       template <typename R>
-      void runForever(R&& onUpdate, int fps = -1, bool forever = true) {
+      void runForever(R &&onUpdate, int fps = -1, bool forever = true) {
         makeCurrent();
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 #ifdef __EMSCRIPTEN__
         auto args = std::make_tuple(std::forward<R>(onUpdate), this);
         emscripten_set_main_loop_arg(
-          [](void* argsUnsafe) {
-            auto a = reinterpret_cast<decltype(args)*>(argsUnsafe);
+          [](void *argsUnsafe) {
+            auto a = reinterpret_cast<decltype(args) *>(argsUnsafe);
             std::get<0> (*a)(*std::get<1>(*a));
           },
           &args, fps, forever);
 #else
         if (fps <= 0) fps = 60;
         glEnable(GL_MULTISAMPLE);
-        auto frameStart = std::chrono::system_clock::now();
+        // auto frameStart = std::chrono::system_clock::now();
 
         while (!glfwWindowShouldClose(window)) {
           // auto frameCurrent = std::chrono::system_clock::now();
@@ -505,7 +505,7 @@ namespace emp {
 
       VertexArrayObject MakeVAO() { return VertexArrayObject(); }
       template <typename... Args>
-      ShaderProgram makeShaderProgram(Args&&... args) const {
+      ShaderProgram makeShaderProgram(Args &&... args) const {
         return {std::forward<Args>(args)...};
       }
 
