@@ -207,12 +207,18 @@ namespace emp {
     private:
     // static std::unordered_map<std::string, std::function<T()>>
     // lazy_resources;
-    static std::unordered_map<std::string, Resource<T>> resources;
+    std::unordered_map<std::string, Resource<T>> resources;
 
     friend ResourceRef<T>;
 
+    Resources() {}
+
+    static Resources& GetInstance() {
+      static Resources* instance = new Resources;
+      return *instance;
+    }
+
     public:
-    Resources() = delete;
     Resources(const Resources&) = delete;
     Resources(Resources&&) = delete;
     Resources& operator=(const Resources&) = delete;
@@ -220,16 +226,17 @@ namespace emp {
 
     template <typename N, typename... U>
     static void Add(const N& name, U&&... args) {
-      emp_assert(resources.count(name) == 0,
+      emp_assert(GetInstance().resources.count(name) == 0,
                  "Attempting to create a resource which already exists");
-      resources.emplace(std::piecewise_construct, std::forward_as_tuple(name),
-                        std::forward_as_tuple(name, std::forward<U>(args)...));
+      GetInstance().resources.emplace(
+        std::piecewise_construct, std::forward_as_tuple(name),
+        std::forward_as_tuple(name, std::forward<U>(args)...));
     }
 
     template <typename S>
     static Resource<T>& Get(const S& name) {
-      emp_assert(resources.count(name) != 0);
-      return resources.at(name);
+      emp_assert(GetInstance().resources.count(name) != 0);
+      return GetInstance().resources.at(name);
     }
   };
 
@@ -318,9 +325,6 @@ namespace emp {
 
     friend Resource<T>;
   };
-
-  template <typename T>
-  std::unordered_map<std::string, Resource<T>> Resources<T>::resources;
 
 }  // namespace emp
 

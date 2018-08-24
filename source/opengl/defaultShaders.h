@@ -19,14 +19,14 @@ namespace emp {
 
                 uniform mat4 model;
                 uniform mat4 view;
-                uniform mat4 proj;
+                uniform mat4 projection;
 
-                varying vec4 fcolor;
+                varying vec4 f_color;
 
                 void main()
                 {
-                    gl_Position = proj * view * model * vec4(position, 1.0);
-                    fcolor = color;
+                    gl_Position = projection * view * model * vec4(position, 1.0);
+                    f_color = color;
                 }
             )glsl";
 
@@ -42,12 +42,12 @@ namespace emp {
                 uniform mat4 view;
                 uniform mat4 projection;
 
-                varying vec4 f_fill;
+                varying vec4 f_color;
 
                 void main()
                 {
                     gl_Position = projection * view * model * vec4(position, 1.0);
-                    f_fill = fill;
+                    f_color = fill;
                 }
             )glsl";
 
@@ -56,11 +56,11 @@ namespace emp {
         "precision mediump float;"
 #endif
         R"glsl(
-                  varying vec4 f_fill;
+                  varying vec4 f_color;
 
                   void main()
                   {
-                      gl_FragColor = f_fill;
+                      gl_FragColor = f_color;
                   }
               )glsl";
 

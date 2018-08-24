@@ -237,9 +237,12 @@ namespace emp {
           return *this;
         }
 
-        template <typename U = T>
-        void PushData(U&& i) {
+        void PushData() {}
+
+        template <typename U = T, typename... Us>
+        void PushData(U&& i, Us&&... us) {
           data.push_back(std::forward<U>(i));
+          PushData(std::forward<Us>(us)...);
         }
 
         template <typename U0 = T, typename... U>
@@ -248,12 +251,12 @@ namespace emp {
         }
 
         template <typename Iter>
-        void PushAll(Iter begin, Iter end) {
+        void PushCollection(Iter begin, Iter end) {
           data.insert(data.end(), begin, end);
         }
 
         template <typename C>
-        void PushAll(const C& collection) {
+        void PushCollection(const C& collection) {
           PushAll(std::begin(collection), std::end(collection));
         }
 

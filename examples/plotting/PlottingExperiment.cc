@@ -35,7 +35,7 @@ struct Particle {
   emp::math::Vec2f acceleration;
 
   Particle(float mass, const emp::math::Vec2f &position)
-      : mass(mass), position(position) {}
+    : mass(mass), position(position) {}
 
   void Step(float dt) {
     velocity += acceleration * dt;
@@ -75,6 +75,8 @@ void UpdateParticles(P &particles, const R &region) {
   }
 
   for (auto &p : particles) {
+    p.AddForce(-p.velocity);
+
     if (p.position.x() < region.min.x() || p.position.x() > region.max.x()) {
       p.velocity.x() *= -1;
       if (p.position.x() < region.min.x()) {
@@ -131,19 +133,19 @@ int main(int argc, char *argv[]) {
   std::vector<Particle> particles;
 
   auto flow = MakeFlow().Then(scale).Then(scatter).Data(
-      MakeAttrs(Xyz = [](auto &p) { return p.position; }, PointSize = 1,
-                emp::graphics::Fill =
-                    [](auto &p) {
-                      auto v = p.velocity.Normalized();
-                      return Color(std::abs(v.x()), std::abs(v.y()));
-                    },
-                emp::graphics::TextSize = 16));
+    MakeAttrs(Xyz = [](auto &p) { return p.position; }, PointSize = 1,
+              emp::graphics::Fill =
+                [](auto &p) {
+                  auto v = p.velocity.Normalized();
+                  return Color(std::abs(v.x()), std::abs(v.y()));
+                },
+              emp::graphics::TextSize = 16));
 
   auto camera =
-      std::make_shared<OrthoCamera>(canvas.getRegion().AddDimension(-100, 100));
+    std::make_shared<OrthoCamera>(canvas.getRegion().AddDimension(-100, 100));
   auto eye = std::make_shared<SimpleEye>();
 
-  for (int i = 0; i < 100; ++i) {
+  for (int i = 0; i < 1000; ++i) {
     particles.emplace_back(10, Vec2f{rand() % 100 - 50, rand() % 100 - 50});
   }
 
@@ -151,13 +153,51 @@ int main(int argc, char *argv[]) {
   canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
     camera->SetViewbox(canvas.getRegion().AddDimension(-100, 100));
   });
+
+  struct point_t {
+    Vec3f position;
+    Color color;
+  };
+
+  std::vector<point_t> points;
+  size_t count_pts = 10;
+  float delta = canvas.getRegion().extents().x() / (count_pts + 1);
+
+  for (int i = 0; i < count_pts; ++i) {
+    points.push_back({
+      Vec3f((i + 1) * delta + canvas.getRegion().min.x(),
+            rand() % (int)canvas.getRegion().extents().y() +
+              canvas.getRegion().min.y(),
+            0),
+      Color::white(0.8),
+    });
+  }
+
   canvas.runForever([&](auto &&) {
     g.Clear(Color::grey(0.8));
 
     UpdateParticles(particles, canvas.getRegion());
     flow(particles.begin(), particles.end());
 
-    stage.Render(g, canvas.getRegion());
+    // stage.Render(g, canvas.getRegion());
+
+    auto line_pen = g.Line(
+      std::begin(points), std::end(points),
+      MakeAttrs(
+        emp::graphics::Vertex = [](const point_t &p) { return p.position; },
+        emp::graphics::Stroke = [](const point_t &p) { return p.color; }));
+
+    line_pen.Draw(MakeAttrs(emp::graphics::Transform = Mat4x4f::Identity()));
+    line_pen.Flush();
+
+    auto points_pen = g.Fill(Mesh::Polygon(5, {2, 2}));
+    points_pen.Data(
+      points,
+      MakeAttrs(
+        emp::graphics::Transform =
+          [](const point_t &p) { return Mat4x4f::Translation(p.position); },
+        emp::graphics::Fill = [](const point_t &p) { return Color::red(); }));
+    points_pen.Flush();
   });
 
   return 0;
