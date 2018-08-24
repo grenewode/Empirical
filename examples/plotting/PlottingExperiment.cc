@@ -156,7 +156,9 @@ int main(int argc, char *argv[]) {
 
   struct point_t {
     Vec3f position;
+    Vec3f direction;
     Color color;
+    float weight;
   };
 
   std::vector<point_t> points;
@@ -164,12 +166,15 @@ int main(int argc, char *argv[]) {
   float delta = canvas.getRegion().extents().x() / (count_pts + 1);
 
   for (int i = 0; i < count_pts; ++i) {
-    points.push_back({
-      Vec3f((i + 1) * delta + canvas.getRegion().min.x(),
-            rand() % (int)canvas.getRegion().extents().y() +
-              canvas.getRegion().min.y(),
-            0),
-      Color::white(0.8),
+    points.push_back(point_t{
+      Vec3f{
+        cos(i * 2 * M_PI / count_pts) * canvas.getRegion().extents().x() / 2 +
+          (canvas.getRegion().max.x() + canvas.getRegion().min.x()) / 2,
+        sin(i * 2 * M_PI / count_pts) * canvas.getRegion().extents().y() / 2 +
+          (canvas.getRegion().max.y() + canvas.getRegion().min.y()) / 2,
+        0},
+      Vec3f{rand() % 5 - 2, rand() % 5 - 2, 0}, Color::white(0.8),
+      rand() % 1000 / 100.f,
     });
   }
 
@@ -179,13 +184,28 @@ int main(int argc, char *argv[]) {
     UpdateParticles(particles, canvas.getRegion());
     flow(particles.begin(), particles.end());
 
+    for (auto &point : points) {
+      if (point.position.y() >= canvas.getRegion().max.y() ||
+          point.position.y() <= canvas.getRegion().min.y()) {
+        point.direction.y() *= -1;
+      }
+
+      if (point.position.x() >= canvas.getRegion().max.x() ||
+          point.position.x() <= canvas.getRegion().min.x()) {
+        point.direction.x() *= -1;
+      }
+      point.position += point.direction;
+    }
+
     // stage.Render(g, canvas.getRegion());
 
     auto line_pen = g.Line(
       std::begin(points), std::end(points),
       MakeAttrs(
         emp::graphics::Vertex = [](const point_t &p) { return p.position; },
-        emp::graphics::Stroke = [](const point_t &p) { return p.color; }));
+        emp::graphics::Stroke = [](const point_t &p) { return p.color; },
+        emp::graphics::StrokeWeight =
+          [](const point_t &p) { return p.weight; }));
 
     line_pen.Draw(MakeAttrs(emp::graphics::Transform = Mat4x4f::Identity()));
     line_pen.Flush();

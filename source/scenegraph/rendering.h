@@ -28,6 +28,7 @@ namespace emp {
     DEFINE_ATTR(Transform);
     DEFINE_ATTR(Fill);
     DEFINE_ATTR(Stroke);
+    DEFINE_ATTR(StrokeWeight);
     DEFINE_ATTR(Text);
     DEFINE_ATTR(TextSize);
     DEFINE_ATTR(TextDirection);
@@ -94,14 +95,14 @@ namespace emp {
         opengl::Uniform fill;
       } fill_shader_uniforms;
 
-      public:
+     public:
       using instance_attributes_type =
         tools::Attrs<TransformValue<math::Mat4x4f>, FillValue<opengl::Color>>;
 
-      private:
+     private:
       std::vector<instance_attributes_type> draw_queue;
 
-      public:
+     public:
       template <typename S = const char *>
       FillRenderer(opengl::GLCanvas &canvas,
                    S &&fill_shader = "DefaultSolidColor")
@@ -203,14 +204,14 @@ namespace emp {
         opengl::Uniform projection;
       } fill_shader_uniforms;
 
-      public:
+     public:
       using instance_attributes_type =
         tools::Attrs<TransformValue<math::Mat4x4f>>;
 
       using vertex_attributes_type =
         tools::Attrs<VertexValue<math::Vec3f>, StrokeValue<opengl::Color>>;
 
-      private:
+     private:
       std::vector<instance_attributes_type> draw_queue;
 
       static constexpr auto DEFAULT_TRANSFORM =
@@ -218,7 +219,7 @@ namespace emp {
         return std::forward<decltype(v)>(v);
       };
 
-      public:
+     public:
       template <typename S = const char *>
       LineRenderer(opengl::GLCanvas &canvas,
                    S &&fill_shader = "DefaultVaryingColor")
@@ -250,7 +251,7 @@ namespace emp {
                       const T &transform = LineRenderer::DEFAULT_TRANSFORM) {
         gpu_elements_buffer.Clear();
         gpu_vertex_buffer.Clear();
-
+        if (begin == end) return;
         auto segment_start = begin++;
         // Don't draw trivial shapes with only one point
         if (begin == end) return;
@@ -258,41 +259,29 @@ namespace emp {
         if (begin == end) {
           // TODO: Handle line segments
         } else {
-          int count = 2;
-
           auto first_attrs = transform(*segment_start);
           auto first = Vertex::Get(first_attrs);
           auto second_attrs = transform(*segment_center);
           auto second = Vertex::Get(second_attrs);
 
-          auto tangent = (second - first).Normalized();
-          auto norm1 = math::Vec3f{-tangent.y(), tangent.x(), 0} * 10;
+          auto tangent =
+            (second - first).Normalized() * StrokeWeight::Get(first_attrs);
+
+          auto norm1 = math::Vec3f{-tangent.y(), tangent.x(), 0};
           auto norm2 = -norm1;
 
           gpu_vertex_buffer.PushData(
             LineVertex{
-              norm1 + first,
-              Stroke::Get(first_attrs),
+              norm1 + first, Stroke::Get(first_attrs),
             },
             LineVertex{
-              norm2 + first,
-              Stroke::Get(first_attrs),
-            },
-            LineVertex{
-              norm1 + second,
-              Stroke::Get(second_attrs),
-            },
-            LineVertex{
-              norm2 + second,
-              Stroke::Get(second_attrs),
+              norm2 + first, Stroke::Get(first_attrs),
             });
-
-          gpu_elements_buffer.PushData(0, 1, 2);
-          gpu_elements_buffer.PushData(2, 3, 1);
 
           // // Don't advance here. We will do that *after* we finish each loop
           // // iteration
           auto segment_end = begin;
+          int count = 0;
           do {
             auto start_attrs = transform(*segment_start);
             auto start = Vertex::Get(start_attrs);
@@ -301,33 +290,36 @@ namespace emp {
             auto end_attrs = transform(*segment_end);
             auto end = Vertex::Get(end_attrs);
 
-            auto delta1 = center - start;
-            auto tangent1 = delta1.Normalized();
-            auto delta2 = end - center;
-            auto tangent2 = delta2.Normalized();
+            auto tangent1 = (center - start).Normalized();
+            auto tangent2 = (end - center).Normalized();
 
-            auto outer = (tangent2 - tangent1).Normalized() * 10;
-            auto inner = -outer;
+            auto tangent = (tangent2 + tangent1).Normalized();
 
-            gpu_vertex_buffer.PushData({outer + center, opengl::Color::red()});
-            gpu_vertex_buffer.PushData(
-              {inner + center, opengl::Color::green()});
+            math::Vec3f normal{-tangent1.y(), tangent1.x(), 0};
+            math::Vec3f miter{-tangent.y(), tangent.x(), 0};
 
-            if (count >= 1) {
-              // TODO: this will NOT draw the first & last items!
-              gpu_elements_buffer.PushData(count * 2 - 2);
-              gpu_elements_buffer.PushData(count * 2 - 1);
-              gpu_elements_buffer.PushData(count * 2 + 1);
+            auto length = StrokeWeight::Get(center_attrs) / (miter * normal);
 
-              gpu_elements_buffer.PushData(count * 2);
-              gpu_elements_buffer.PushData(count * 2 + 1);
-              gpu_elements_buffer.PushData(count * 2 - 1);
-            }
+            auto color1 = length > 0 ? Stroke::Get(center_attrs)
+                                     : emp::opengl::Color::red();
+            auto color2 = length < 0 ? Stroke::Get(center_attrs)
+                                     : emp::opengl::Color::red();
+
+            gpu_vertex_buffer.PushData({center + miter * length, color1});
+            gpu_vertex_buffer.PushData({center - miter * length, color2});
+
+            gpu_elements_buffer.PushData(count);
+            gpu_elements_buffer.PushData(count + 1);
+            gpu_elements_buffer.PushData(count + 2);
+
+            gpu_elements_buffer.PushData(count + 2);
+            gpu_elements_buffer.PushData(count + 3);
+            gpu_elements_buffer.PushData(count + 1);
+            count += 2;
 
             segment_start = segment_center;
             segment_center = segment_end;
             segment_end = ++begin;
-            ++count;
           } while (segment_end != end);
         }
 
@@ -390,7 +382,7 @@ namespace emp {
         opengl::Uniform fill;
       } shader_uniforms;
 
-      public:
+     public:
       using instance_attributes_type =
         tools::Attrs<TransformValue<math::Mat4x4f>, FillValue<opengl::Color>,
                      TextValue<std::string>, TextSizeValue<float>>;
@@ -520,10 +512,10 @@ namespace emp {
 
     template <typename R>
     class Pen {
-      private:
+     private:
       R *renderer;
 
-      public:
+     public:
       using instance_attributes_type = typename R::instance_attributes_type;
 
       template <typename... T>
@@ -562,7 +554,7 @@ namespace emp {
       LineRenderer line_renderer;
       TextRenderer text_renderer;
 
-      public:
+     public:
       std::shared_ptr<scenegraph::Camera> camera;
       std::shared_ptr<scenegraph::Eye> eye;
 
