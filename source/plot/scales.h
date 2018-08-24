@@ -103,8 +103,10 @@ namespace emp {
                        {padding.x(), padding.y()},
                        {bordered_space.x() - padding.x(), padding.y() + 1},
                      }),
-                     emp::graphics::Fill = Color::black(1),
-                     emp::graphics::Transform = transform);
+                     {
+                       emp::graphics::Fill = Color::black(1),
+                       emp::graphics::Transform = transform,
+                     });
 
         g.DrawFilled(graphics::Mesh::Region({
                        {
@@ -116,8 +118,10 @@ namespace emp {
                          bordered_space.y() - padding.y(),
                        },
                      }),
-                     emp::graphics::Fill = Color::black(1),
-                     emp::graphics::Transform = transform);
+                     {
+                       emp::graphics::Fill = Color::black(1),
+                       emp::graphics::Transform = transform,
+                     });
 
         for (int i = 0; i < xticks; ++i) {
           float pos = ((screen_space.x() - padding.x() * 2) / xticks) * i;
@@ -134,8 +138,10 @@ namespace emp {
                            padding.y() + 10,
                          },
                        }),
-                       emp::graphics::Fill = Color::black(1),
-                       emp::graphics::Transform = transform);
+                       {
+                         emp::graphics::Fill = Color::black(1),
+                         emp::graphics::Transform = transform,
+                       });
 
           g.Text()
             .Draw({
@@ -163,8 +169,10 @@ namespace emp {
                            padding.y() + pos + 1,
                          },
                        }),
-                       emp::graphics::Fill = Color::black(1),
-                       emp::graphics::Transform = transform);
+                       {
+                         emp::graphics::Fill = Color::black(1),
+                         emp::graphics::Transform = transform,
+                       });
 
           g.Text()
             .Draw({

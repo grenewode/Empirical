@@ -24,8 +24,10 @@ namespace emp {
 
     enum class TextDirections { Horizontal, Vertical };
 
+    DEFINE_ATTR(Vertex);
     DEFINE_ATTR(Transform);
     DEFINE_ATTR(Fill);
+    DEFINE_ATTR(Stroke);
     DEFINE_ATTR(Text);
     DEFINE_ATTR(TextSize);
     DEFINE_ATTR(TextDirection);
@@ -172,6 +174,196 @@ namespace emp {
         for (auto &attrs : draw_queue) {
           fill_shader_uniforms.model = attrs.GetTransform();
           fill_shader_uniforms.fill = attrs.GetFill();
+
+          gpu_elements_buffer.Draw(GL_TRIANGLES);
+        }
+        draw_queue.clear();
+      }
+    };
+
+    class LineRenderer {
+      ResourceRef<opengl::ShaderProgram> fill_shader;
+
+      opengl::VertexArrayObject vao;
+
+      struct LineVertex {
+        math::Vec3f position;
+        opengl::Color color;
+      };
+
+      opengl::BufferVector<opengl::BufferType::Array, LineVertex>
+        gpu_vertex_buffer;
+
+      opengl::BufferVector<opengl::BufferType::ElementArray, int>
+        gpu_elements_buffer;
+
+      struct {
+        opengl::Uniform model;
+        opengl::Uniform view;
+        opengl::Uniform projection;
+      } fill_shader_uniforms;
+
+      public:
+      using instance_attributes_type =
+        tools::Attrs<TransformValue<math::Mat4x4f>>;
+
+      using vertex_attributes_type =
+        tools::Attrs<VertexValue<math::Vec3f>, StrokeValue<opengl::Color>>;
+
+      private:
+      std::vector<instance_attributes_type> draw_queue;
+
+      static constexpr auto DEFAULT_TRANSFORM =
+        [](auto &&v) -> std::decay_t<decltype(v)> {
+        return std::forward<decltype(v)>(v);
+      };
+
+      public:
+      template <typename S = const char *>
+      LineRenderer(opengl::GLCanvas &canvas,
+                   S &&fill_shader = "DefaultVaryingColor")
+        : fill_shader(std::forward<S>(fill_shader)),
+          vao(canvas.MakeVAO()),
+          gpu_vertex_buffer(canvas.makeBuffer<opengl::BufferType::Array>()),
+          gpu_elements_buffer(
+            canvas.makeBuffer<opengl::BufferType::ElementArray>()) {
+        this->fill_shader.OnSet([this](auto &) {
+          fill_shader_uniforms.model = this->fill_shader->Uniform("model");
+          fill_shader_uniforms.view = this->fill_shader->Uniform("view");
+          fill_shader_uniforms.projection =
+            this->fill_shader->Uniform("projection");
+
+          vao.bind();
+          gpu_vertex_buffer.bind();
+          gpu_elements_buffer.bind();
+          // TODO: this probably should not use this feature, as it may break on
+          // some compilers
+          vao.attr(
+            this->fill_shader->Attribute("position", &LineVertex::position));
+          vao.attr(this->fill_shader->Attribute("color", &LineVertex::color));
+        });
+      }
+
+      template <typename I,
+                typename T = decltype(LineRenderer::DEFAULT_TRANSFORM)>
+      void BeginBatch(const RenderSettings &settings, I begin, I end,
+                      const T &transform = LineRenderer::DEFAULT_TRANSFORM) {
+        gpu_elements_buffer.Clear();
+        gpu_vertex_buffer.Clear();
+
+        auto segment_start = begin++;
+        // Don't draw trivial shapes with only one point
+        if (begin == end) return;
+        auto segment_center = begin++;
+        if (begin == end) {
+          // TODO: Handle line segments
+        } else {
+          int count = 2;
+
+          auto first_attrs = transform(*segment_start);
+          auto first = Vertex::Get(first_attrs);
+          auto second_attrs = transform(*segment_center);
+          auto second = Vertex::Get(second_attrs);
+
+          auto tangent = (second - first).Normalized();
+          auto norm1 = math::Vec3f{-tangent.y(), tangent.x(), 0} * 10;
+          auto norm2 = -norm1;
+
+          gpu_vertex_buffer.PushData(
+            LineVertex{
+              norm1 + first,
+              Stroke::Get(first_attrs),
+            },
+            LineVertex{
+              norm2 + first,
+              Stroke::Get(first_attrs),
+            },
+            LineVertex{
+              norm1 + second,
+              Stroke::Get(second_attrs),
+            },
+            LineVertex{
+              norm2 + second,
+              Stroke::Get(second_attrs),
+            });
+
+          gpu_elements_buffer.PushData(0, 1, 2);
+          gpu_elements_buffer.PushData(2, 3, 1);
+
+          // // Don't advance here. We will do that *after* we finish each loop
+          // // iteration
+          auto segment_end = begin;
+          do {
+            auto start_attrs = transform(*segment_start);
+            auto start = Vertex::Get(start_attrs);
+            auto center_attrs = transform(*segment_center);
+            auto center = Vertex::Get(center_attrs);
+            auto end_attrs = transform(*segment_end);
+            auto end = Vertex::Get(end_attrs);
+
+            auto delta1 = center - start;
+            auto tangent1 = delta1.Normalized();
+            auto delta2 = end - center;
+            auto tangent2 = delta2.Normalized();
+
+            auto outer = (tangent2 - tangent1).Normalized() * 10;
+            auto inner = -outer;
+
+            gpu_vertex_buffer.PushData({outer + center, opengl::Color::red()});
+            gpu_vertex_buffer.PushData(
+              {inner + center, opengl::Color::green()});
+
+            if (count >= 1) {
+              // TODO: this will NOT draw the first & last items!
+              gpu_elements_buffer.PushData(count * 2 - 2);
+              gpu_elements_buffer.PushData(count * 2 - 1);
+              gpu_elements_buffer.PushData(count * 2 + 1);
+
+              gpu_elements_buffer.PushData(count * 2);
+              gpu_elements_buffer.PushData(count * 2 + 1);
+              gpu_elements_buffer.PushData(count * 2 - 1);
+            }
+
+            segment_start = segment_center;
+            segment_center = segment_end;
+            segment_end = ++begin;
+            ++count;
+          } while (segment_end != end);
+        }
+
+        vao.bind();
+        gpu_vertex_buffer.SendToGPU();
+        gpu_elements_buffer.SendToGPU();
+
+        fill_shader->Use();
+        fill_shader_uniforms.projection = settings.projection;
+        fill_shader_uniforms.view = settings.view;
+      }
+
+      template <typename I = instance_attributes_type>
+      void Instance(I &&attrs) {
+        draw_queue.emplace_back(std::forward<I>(attrs));
+      }
+
+      template <typename I = instance_attributes_type>
+      void Instance(I &&attrs, float width, float height) {
+        Transform::Get(attrs) *= emp::math::Mat4x4f::Scale(width, height, 1);
+
+        draw_queue.emplace_back(std::forward<I>(attrs));
+      }
+
+      void FinishBatch() {
+        // #ifndef EMSCRIPTEN
+        //         if (draw_queue.size() > 10000) {
+        //           return;
+        //         }
+        // #endif
+
+        fill_shader->Use();
+        vao.bind();
+
+        for (auto &attrs : draw_queue) {
+          fill_shader_uniforms.model = attrs.GetTransform();
 
           gpu_elements_buffer.Draw(GL_TRIANGLES);
         }
@@ -347,10 +539,18 @@ namespace emp {
         }
         return *this;
       }
+      template <typename I, typename... U>
+      Pen &Data(I &iterable, const tools::Attrs<U...> &transform) {
+        return Data(std::begin(iterable), std::end(iterable), transform);
+      }
+      template <typename I, typename... U>
+      Pen &Data(const I &iterable, const tools::Attrs<U...> &transform) {
+        return Data(std::begin(iterable), std::end(iterable), transform);
+      }
 
       template <typename T0 = instance_attributes_type, typename... T>
       Pen &Draw(T0 &&args0, T &&... args) {
-        renderer->Instance({std::forward<T0>(args0), std::forward<T>(args)...});
+        renderer->Instance(std::forward<T0>(args0), std::forward<T>(args)...);
         return *this;
       }
 
@@ -359,6 +559,7 @@ namespace emp {
 
     class Graphics {
       FillRenderer fill_renderer;
+      LineRenderer line_renderer;
       TextRenderer text_renderer;
 
       public:
@@ -370,6 +571,7 @@ namespace emp {
                std::shared_ptr<scenegraph::Camera> camera,
                std::shared_ptr<scenegraph::Eye> eye)
         : fill_renderer(canvas),
+          line_renderer(canvas),
           text_renderer(canvas, std::forward<F>(font)),
           camera(camera),
           eye(eye) {}
@@ -397,6 +599,13 @@ namespace emp {
         return {&fill_renderer,
                 {camera->GetProjection(), eye->CalculateView()},
                 mesh};
+      }
+
+      template <typename... Args>
+      Pen<LineRenderer> Line(Args &&... args) {
+        return {&line_renderer,
+                {camera->GetProjection(), eye->CalculateView()},
+                std::forward<Args>(args)...};
       }
 
       template <typename A0 = typename FillRenderer::instance_attributes_type,

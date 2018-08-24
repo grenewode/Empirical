@@ -153,13 +153,51 @@ int main(int argc, char *argv[]) {
   canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
     camera->SetViewbox(canvas.getRegion().AddDimension(-100, 100));
   });
+
+  struct point_t {
+    Vec3f position;
+    Color color;
+  };
+
+  std::vector<point_t> points;
+  size_t count_pts = 10;
+  float delta = canvas.getRegion().extents().x() / (count_pts + 1);
+
+  for (int i = 0; i < count_pts; ++i) {
+    points.push_back({
+      Vec3f((i + 1) * delta + canvas.getRegion().min.x(),
+            rand() % (int)canvas.getRegion().extents().y() +
+              canvas.getRegion().min.y(),
+            0),
+      Color::white(0.8),
+    });
+  }
+
   canvas.runForever([&](auto &&) {
     g.Clear(Color::grey(0.8));
 
     UpdateParticles(particles, canvas.getRegion());
     flow(particles.begin(), particles.end());
 
-    stage.Render(g, canvas.getRegion());
+    // stage.Render(g, canvas.getRegion());
+
+    auto line_pen = g.Line(
+      std::begin(points), std::end(points),
+      MakeAttrs(
+        emp::graphics::Vertex = [](const point_t &p) { return p.position; },
+        emp::graphics::Stroke = [](const point_t &p) { return p.color; }));
+
+    line_pen.Draw(MakeAttrs(emp::graphics::Transform = Mat4x4f::Identity()));
+    line_pen.Flush();
+
+    auto points_pen = g.Fill(Mesh::Polygon(5, {2, 2}));
+    points_pen.Data(
+      points,
+      MakeAttrs(
+        emp::graphics::Transform =
+          [](const point_t &p) { return Mat4x4f::Translation(p.position); },
+        emp::graphics::Fill = [](const point_t &p) { return Color::red(); }));
+    points_pen.Flush();
   });
 
   return 0;
