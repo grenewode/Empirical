@@ -254,18 +254,18 @@ namespace emp {
 
     template <typename F, std::size_t D>
     class Row {
-     public:
+      public:
       using value_type = F;
       static constexpr auto rows = 1;
       static constexpr auto columns = D;
 
-     protected:
+      protected:
       F* ref;
 
       template <typename, size_t>
       friend class Row;
 
-     public:
+      public:
       constexpr explicit Row(F* ref) : ref(ref) {}
       constexpr Row(const Row& other) : ref(other.ref) {}
       constexpr Row(Row&& other) : ref(other.ref) { other.ref = nullptr; }
@@ -345,18 +345,18 @@ namespace emp {
 
     template <typename F, std::size_t D>
     class Col {
-     public:
+      public:
       using value_type = F;
       static constexpr auto rows = D;
       static constexpr auto columns = 1;
 
-     protected:
+      protected:
       F* ref;
 
       template <typename, size_t>
       friend class Col;
 
-     public:
+      public:
       constexpr explicit Col(F* ref) : ref(ref) {}
       constexpr Col(const Col& other) : ref(other.ref) {}
       constexpr Col(Col&& other) : ref(other.ref) { other.ref = nullptr; }
@@ -419,19 +419,19 @@ namespace emp {
 
     template <typename F, std::size_t R, std::size_t C>
     class Mat {
-     public:
+      public:
       static_assert(R >= 0 && C >= 0 && (R != 1 || C != 1),
                     "Matrix is too small");
       using value_type = F;
       static constexpr auto rows = R;
       static constexpr auto columns = C;
 
-     protected:
+      protected:
       // This needs to wait until c++17 so that data.Data() is constexpr
       // std::array<F, rows * columns> data;
       F data[rows * columns];
 
-     private:
+      private:
       template <typename G, typename... Args, std::size_t... I>
       constexpr static Mat gen(G&& callback, const std::index_sequence<I...>&,
                                Args&&... args) {
@@ -444,7 +444,7 @@ namespace emp {
       constexpr Mat(const std::tuple<T, std::index_sequence<I...>>& value)
         : data{internal::pass<I>(std::get<0>(value))...} {}
 
-     public:
+      public:
       template <typename G, typename... Args>
       constexpr static Mat From(G&& callback, Args&&... args) {
         return gen(std::forward<G>(callback),
@@ -468,7 +468,7 @@ namespace emp {
           1, 0, 0, std::forward<X>(x),  // row 1
           0, 1, 0, std::forward<Y>(y),  // row 2
           0, 0, 1, std::forward<Z>(z),  // row 3
-          0, 0, 0, 1,                   // row 4
+          0, 0, 0, 1,  // row 4
         };
       }
       template <typename U>
@@ -477,7 +477,7 @@ namespace emp {
           1, 0, 0, translation.x(),  // row 1
           0, 1, 0, translation.y(),  // row 2
           0, 0, 1, translation.z(),  // row 3
-          0, 0, 0, 1,                // row 4
+          0, 0, 0, 1,  // row 4
         };
       }
       template <typename U>
@@ -532,7 +532,7 @@ namespace emp {
       Mat& operator=(const Mat&) = default;
       Mat& operator=(Mat&&) = default;
 
-     private:
+      private:
       template <typename F2>
       struct __impl_ExplicitConvert {
         constexpr F2 operator()(size_t r, size_t c, const Mat& mat) const {
@@ -540,7 +540,7 @@ namespace emp {
         }
       };
 
-     public:
+      public:
       template <typename F2>
       explicit operator Mat<F2, R, C>() const {
         return Mat<F2, R, C>::gen(__impl_ExplicitConvert<F2>{}, *this);
@@ -882,7 +882,7 @@ namespace emp {
 
       constexpr auto DropDimension() const { return WithoutLastRow(); }
 
-     private:
+      private:
       template <typename... U, size_t... I>
       constexpr auto __impl_AddRowAtEnd(const std::index_sequence<I...>&,
                                         U&&... row) & {
@@ -927,7 +927,7 @@ namespace emp {
         return Mat<F, R + 1, C>{std::forward<U>(row)..., std::move(data[I])...};
       }
 
-     public:
+      public:
       template <typename... U>
       constexpr auto AddRowAtEnd(U&&... row) & {
         static_assert(sizeof...(U) == C,
@@ -1265,7 +1265,7 @@ namespace emp {
 
     template <typename T>
     class Quat {
-     public:
+      public:
       using value_type = T;
 
       T w, x, y, z;

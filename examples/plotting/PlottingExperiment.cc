@@ -13,7 +13,7 @@
 #include "math/consts.h"
 #include "opengl/defaultShaders.h"
 #include "opengl/glcanvas.h"
-// #include "plot/line.h"
+#include "plot/line.h"
 #include "plot/scales.h"
 #include "plot/scatter.h"
 #include "scenegraph/camera.h"
@@ -118,28 +118,33 @@ int main(int argc, char *argv[]) {
 
   Stage<2> stage;
   auto root = stage.MakeRoot<Flow<2>>(true, FlowDirection<2>::Y);
-  // auto line{std::make_shared<Line>(canvas)};
+  auto line{std::make_shared<Line<2>>()};
   auto scatter{std::make_shared<Scatter<2>>(Mesh::Polygon(32, {2, 2}))};
   auto scale{std::make_shared<Scale<2>>()};
 
   auto plot{std::make_shared<Stack<2>>()};
   auto plot_title{std::make_shared<Text<2>>("Hello World", 32)};
   // auto plot_subtitle{std::make_shared<Text<2>>("details", 18)};
-  plot->Append(scatter).Append(scale);
+  plot->Append(line).Append(scatter).Append(scale);
   root->Append(plot_title, 0);
   // root->Append(plot_subtitle, 0);
   root->Append(plot);
 
   std::vector<Particle> particles;
 
-  auto flow = MakeFlow().Then(scale).Then(scatter).Data(
+  auto flow = MakeFlow().Then(scale).Then(line).Data(
     MakeAttrs(Xyz = [](auto &p) { return p.position; }, PointSize = 1,
               emp::graphics::Fill =
                 [](auto &p) {
                   auto v = p.velocity.Normalized();
                   return Color(std::abs(v.x()), std::abs(v.y()));
                 },
-              emp::graphics::TextSize = 16));
+              emp::graphics::Stroke =
+                [](auto &p) {
+                  auto v = p.velocity.Normalized();
+                  return Color(std::abs(v.x()), std::abs(v.y()));
+                },
+              emp::graphics::StrokeWeight = 5, emp::graphics::TextSize = 16));
 
   auto camera =
     std::make_shared<OrthoCamera>(canvas.getRegion().AddDimension(-100, 100));
@@ -154,70 +159,13 @@ int main(int argc, char *argv[]) {
     camera->SetViewbox(canvas.getRegion().AddDimension(-100, 100));
   });
 
-  struct point_t {
-    Vec3f position;
-    Vec3f direction;
-    Color color;
-    float weight;
-  };
-
-  std::vector<point_t> points;
-  size_t count_pts = 10;
-  float delta = canvas.getRegion().extents().x() / (count_pts + 1);
-
-  for (int i = 0; i < count_pts; ++i) {
-    points.push_back(point_t{
-      Vec3f{
-        cos(i * 2 * M_PI / count_pts) * canvas.getRegion().extents().x() / 2 +
-          (canvas.getRegion().max.x() + canvas.getRegion().min.x()) / 2,
-        sin(i * 2 * M_PI / count_pts) * canvas.getRegion().extents().y() / 2 +
-          (canvas.getRegion().max.y() + canvas.getRegion().min.y()) / 2,
-        0},
-      Vec3f{rand() % 5 - 2, rand() % 5 - 2, 0}, Color::white(0.8),
-      rand() % 1000 / 100.f,
-    });
-  }
-
   canvas.runForever([&](auto &&) {
     g.Clear(Color::grey(0.8));
 
     UpdateParticles(particles, canvas.getRegion());
     flow(particles.begin(), particles.end());
 
-    for (auto &point : points) {
-      if (point.position.y() >= canvas.getRegion().max.y() ||
-          point.position.y() <= canvas.getRegion().min.y()) {
-        point.direction.y() *= -1;
-      }
-
-      if (point.position.x() >= canvas.getRegion().max.x() ||
-          point.position.x() <= canvas.getRegion().min.x()) {
-        point.direction.x() *= -1;
-      }
-      point.position += point.direction;
-    }
-
-    // stage.Render(g, canvas.getRegion());
-
-    auto line_pen = g.Line(
-      std::begin(points), std::end(points),
-      MakeAttrs(
-        emp::graphics::Vertex = [](const point_t &p) { return p.position; },
-        emp::graphics::Stroke = [](const point_t &p) { return p.color; },
-        emp::graphics::StrokeWeight =
-          [](const point_t &p) { return p.weight; }));
-
-    line_pen.Draw(MakeAttrs(emp::graphics::Transform = Mat4x4f::Identity()));
-    line_pen.Flush();
-
-    auto points_pen = g.Fill(Mesh::Polygon(5, {2, 2}));
-    points_pen.Data(
-      points,
-      MakeAttrs(
-        emp::graphics::Transform =
-          [](const point_t &p) { return Mat4x4f::Translation(p.position); },
-        emp::graphics::Fill = [](const point_t &p) { return Color::red(); }));
-    points_pen.Flush();
+    stage.Render(g, canvas.getRegion());
   });
 
   return 0;
