@@ -237,12 +237,25 @@ namespace emp {
           return *this;
         }
 
-        void PushData() {}
+        private:
+        void impl__PushData() {}
 
         template <typename U = T, typename... Us>
-        void PushData(U&& i, Us&&... us) {
+        void impl__PushData(U&& i, Us&&... us) {
           data.push_back(std::forward<U>(i));
-          PushData(std::forward<Us>(us)...);
+          impl__PushData(std::forward<Us>(us)...);
+        }
+
+        public:
+        template <typename U = T, typename... Us>
+        size_t PushData(U&& i) {
+          data.push_back(std::forward<U>(i));
+          return data.size() - 1;
+        }
+        template <typename U0 = T, typename U1, typename... U>
+        void PushData(U0&& u0, U1&& u1, U&&... u) {
+          impl__PushData(std::forward<U0>(u0), std::forward<U1>(u1),
+                         std::forward<U>(u)...);
         }
 
         template <typename U0 = T, typename... U>

@@ -95,14 +95,14 @@ namespace emp {
         opengl::Uniform fill;
       } fill_shader_uniforms;
 
-     public:
+      public:
       using instance_attributes_type =
         tools::Attrs<TransformValue<math::Mat4x4f>, FillValue<opengl::Color>>;
 
-     private:
+      private:
       std::vector<instance_attributes_type> draw_queue;
 
-     public:
+      public:
       template <typename S = const char *>
       FillRenderer(opengl::GLCanvas &canvas,
                    S &&fill_shader = "DefaultSolidColor")
@@ -204,14 +204,14 @@ namespace emp {
         opengl::Uniform projection;
       } fill_shader_uniforms;
 
-     public:
+      public:
       using instance_attributes_type =
         tools::Attrs<TransformValue<math::Mat4x4f>>;
 
       using vertex_attributes_type =
         tools::Attrs<VertexValue<math::Vec3f>, StrokeValue<opengl::Color>>;
 
-     private:
+      private:
       std::vector<instance_attributes_type> draw_queue;
 
       static constexpr auto DEFAULT_TRANSFORM =
@@ -219,7 +219,7 @@ namespace emp {
         return std::forward<decltype(v)>(v);
       };
 
-     public:
+      public:
       template <typename S = const char *>
       LineRenderer(opengl::GLCanvas &canvas,
                    S &&fill_shader = "DefaultVaryingColor")
@@ -256,73 +256,202 @@ namespace emp {
         // Don't draw trivial shapes with only one point
         if (begin == end) return;
         auto segment_center = begin++;
-        if (begin == end) {
-          // TODO: Handle line segments
-        } else {
-          // USES method from here:
-          // https://forum.libcinder.org/topic/smooth-thick-lines-using-geometry-shader
+        // if (begin == end) {
+        //   // TODO: Handle line segments
+        // } else {
+        int last_segment_plus, last_segment_minus;
+        {
           auto first_attrs = transform(*segment_start);
-          auto first = Vertex::Get(first_attrs);
+          math::Vec3f first{Vertex::Get(first_attrs).x(),
+                            Vertex::Get(first_attrs).y(), 0};
           auto second_attrs = transform(*segment_center);
-          auto second = Vertex::Get(second_attrs);
+          math::Vec3f second = {Vertex::Get(second_attrs).x(),
+                                Vertex::Get(second_attrs).y(), 0};
 
           auto tangent =
             (second - first).Normalized() * StrokeWeight::Get(first_attrs);
 
-          auto norm1 = math::Vec3f{-tangent.y(), tangent.x(), 0};
-          auto norm2 = -norm1;
+          auto normal = math::Vec3f{-tangent.y(), tangent.x(), 0};
 
-          gpu_vertex_buffer.PushData(
-            LineVertex{
-              norm1 + first, Stroke::Get(first_attrs),
-            },
-            LineVertex{
-              norm2 + first, Stroke::Get(first_attrs),
-            });
+          last_segment_plus = gpu_vertex_buffer.PushData(LineVertex{
+            first + normal,
+            Stroke::Get(first_attrs),
+          });
 
-          // // Don't advance here. We will do that *after* we finish each loop
-          // // iteration
-          auto segment_end = begin;
-          int count = 0;
-          do {
-            auto start_attrs = transform(*segment_start);
-            auto start = Vertex::Get(start_attrs);
-            auto center_attrs = transform(*segment_center);
-            auto center = Vertex::Get(center_attrs);
-            auto end_attrs = transform(*segment_end);
-            auto end = Vertex::Get(end_attrs);
+          last_segment_minus = gpu_vertex_buffer.PushData(LineVertex{
+            first - normal,
+            Stroke::Get(first_attrs),
+          });
+        }
 
-            auto tangent1 = (center - start).Normalized();
-            auto tangent2 = (end - center).Normalized();
+        // // Don't advance here. We will do that *after* we finish each loop
+        // // iteration
+        auto segment_end = begin;
+        int count = 0;
 
-            auto tangent = (tangent2 + tangent1).Normalized();
+        while (segment_end != end) {
+          auto start_attrs = transform(*segment_start);
+          math::Vec3f start{Vertex::Get(start_attrs).x(),
+                            Vertex::Get(start_attrs).y(), 0};
 
-            math::Vec3f normal{-tangent1.y(), tangent1.x(), 0};
-            math::Vec3f miter{-tangent.y(), tangent.x(), 0};
+          auto center_attrs = transform(*segment_center);
+          math::Vec3f center{Vertex::Get(center_attrs).x(),
+                             Vertex::Get(center_attrs).y(), 0};
 
-            auto length = StrokeWeight::Get(center_attrs) / (miter * normal);
+          auto end_attrs = transform(*segment_end);
+          math::Vec3f end{Vertex::Get(end_attrs).x(),
+                          Vertex::Get(end_attrs).y(), 0};
 
-            auto color1 = length > 0 ? Stroke::Get(center_attrs)
-                                     : emp::opengl::Color::red();
-            auto color2 = length < 0 ? Stroke::Get(center_attrs)
-                                     : emp::opengl::Color::red();
+          auto tangent1 = center - start;
+          auto segment1_length = tangent1.Mag();
+          tangent1 /= segment1_length;
+          auto tangent2 = end - center;
+          auto segment2_length = tangent2.Mag();
+          tangent2 /= segment2_length;
 
-            gpu_vertex_buffer.PushData({center + miter * length, color1});
-            gpu_vertex_buffer.PushData({center - miter * length, color2});
+          auto stroke_weight = StrokeWeight::Get(center_attrs);
 
-            gpu_elements_buffer.PushData(count);
-            gpu_elements_buffer.PushData(count + 1);
-            gpu_elements_buffer.PushData(count + 2);
+          auto tangent = (tangent2 + tangent1).Normalized();
 
-            gpu_elements_buffer.PushData(count + 2);
-            gpu_elements_buffer.PushData(count + 3);
-            gpu_elements_buffer.PushData(count + 1);
-            count += 2;
+          math::Vec3f normal1{-tangent1.y(), tangent1.x(), 0};
+          math::Vec3f normal2{-tangent2.y(), tangent2.x(), 0};
+          math::Vec3f miter{-tangent.y(), tangent.x(), 0};
 
-            segment_start = segment_center;
-            segment_center = segment_end;
-            segment_end = ++begin;
-          } while (segment_end != end);
+          auto length = stroke_weight / (miter * normal1);
+
+          auto color = Stroke::Get(center_attrs);
+
+          int current_segment_plus, current_segment_minus;
+
+          auto miter_offset = miter * length;
+          auto miter_offset_length = miter_offset.Mag();
+
+          miter_offset *= std::min(miter_offset_length,
+                                   std::min(segment1_length, segment2_length)) /
+                          miter_offset_length;
+
+          if (miter_offset_length > stroke_weight) {
+            auto cross = normal1.x() * normal2.y() - normal1.y() * normal2.x();
+
+            normal1 = normal1.Normalized() * stroke_weight;
+            normal2 = normal2.Normalized() * stroke_weight;
+            if (cross > 0) {
+              current_segment_plus =
+                gpu_vertex_buffer.PushData({center + miter_offset, color});
+
+              int start_join =
+                gpu_vertex_buffer.PushData({center - normal1, color});
+
+              int center_join = gpu_vertex_buffer.PushData(
+                {center - miter.Normalized() * stroke_weight, color});
+
+              int end_join =
+                gpu_vertex_buffer.PushData({center - normal2, color});
+
+              gpu_elements_buffer.PushData(last_segment_plus);
+              gpu_elements_buffer.PushData(last_segment_minus);
+              gpu_elements_buffer.PushData(current_segment_plus);
+
+              gpu_elements_buffer.PushData(current_segment_plus);
+              gpu_elements_buffer.PushData(start_join);
+              gpu_elements_buffer.PushData(last_segment_minus);
+
+              gpu_elements_buffer.PushData(current_segment_plus);
+              gpu_elements_buffer.PushData(start_join);
+              gpu_elements_buffer.PushData(center_join);
+
+              gpu_elements_buffer.PushData(current_segment_plus);
+              gpu_elements_buffer.PushData(center_join);
+              gpu_elements_buffer.PushData(end_join);
+
+              current_segment_minus = end_join;
+
+            } else {
+              int start_join =
+                gpu_vertex_buffer.PushData({center + normal1, color});
+
+              int center_join = gpu_vertex_buffer.PushData(
+                {center + miter.Normalized() * stroke_weight, color});
+
+              int end_join =
+                gpu_vertex_buffer.PushData({center + normal2, color});
+
+              current_segment_minus =
+                gpu_vertex_buffer.PushData({center - miter_offset, color});
+
+              gpu_elements_buffer.PushData(last_segment_plus);
+              gpu_elements_buffer.PushData(last_segment_minus);
+              gpu_elements_buffer.PushData(start_join);
+
+              gpu_elements_buffer.PushData(start_join);
+              gpu_elements_buffer.PushData(current_segment_minus);
+              gpu_elements_buffer.PushData(last_segment_minus);
+
+              gpu_elements_buffer.PushData(start_join);
+              gpu_elements_buffer.PushData(center_join);
+              gpu_elements_buffer.PushData(current_segment_minus);
+
+              gpu_elements_buffer.PushData(center_join);
+              gpu_elements_buffer.PushData(end_join);
+              gpu_elements_buffer.PushData(current_segment_minus);
+
+              current_segment_plus = end_join;
+            }
+          } else {
+            current_segment_plus =
+              gpu_vertex_buffer.PushData({center + miter_offset, color});
+            current_segment_minus =
+              gpu_vertex_buffer.PushData({center - miter_offset, color});
+
+            gpu_elements_buffer.PushData(last_segment_plus);
+            gpu_elements_buffer.PushData(last_segment_minus);
+            gpu_elements_buffer.PushData(current_segment_plus);
+
+            gpu_elements_buffer.PushData(current_segment_plus);
+            gpu_elements_buffer.PushData(current_segment_minus);
+            gpu_elements_buffer.PushData(last_segment_minus);
+          }
+
+          last_segment_plus = current_segment_plus;
+          last_segment_minus = current_segment_minus;
+
+          segment_start = segment_center;
+          segment_center = segment_end;
+          segment_end = ++begin;
+        }
+
+        {
+          auto start_attrs = transform(*segment_start);
+          math::Vec3f start{Vertex::Get(start_attrs).x(),
+                            Vertex::Get(start_attrs).y(), 0};
+
+          auto center_attrs = transform(*segment_center);
+          math::Vec3f end{Vertex::Get(center_attrs).x(),
+                          Vertex::Get(center_attrs).y(), 0};
+          auto stroke_weight = StrokeWeight::Get(center_attrs);
+          auto color = Stroke::Get(center_attrs);
+
+          auto tangent = (end - start).Normalized() * stroke_weight;
+
+          auto normal = math::Vec3f{-tangent.y(), tangent.x(), 0};
+
+          int current_segment_plus = gpu_vertex_buffer.PushData(LineVertex{
+            end + normal,
+            color,
+          });
+
+          int current_segment_minus = gpu_vertex_buffer.PushData(LineVertex{
+            end - normal,
+            color,
+          });
+
+          gpu_elements_buffer.PushData(last_segment_plus);
+          gpu_elements_buffer.PushData(last_segment_minus);
+          gpu_elements_buffer.PushData(current_segment_plus);
+
+          gpu_elements_buffer.PushData(current_segment_plus);
+          gpu_elements_buffer.PushData(current_segment_minus);
+          gpu_elements_buffer.PushData(last_segment_minus);
         }
 
         vao.bind();
@@ -363,7 +492,7 @@ namespace emp {
         }
         draw_queue.clear();
       }
-    };
+    };  // namespace graphics
 
     class TextRenderer {
       struct data_t {
@@ -384,7 +513,7 @@ namespace emp {
         opengl::Uniform fill;
       } shader_uniforms;
 
-     public:
+      public:
       using instance_attributes_type =
         tools::Attrs<TransformValue<math::Mat4x4f>, FillValue<opengl::Color>,
                      TextValue<std::string>, TextSizeValue<float>>;
@@ -514,10 +643,10 @@ namespace emp {
 
     template <typename R>
     class Pen {
-     private:
+      private:
       R *renderer;
 
-     public:
+      public:
       using instance_attributes_type = typename R::instance_attributes_type;
 
       template <typename... T>
@@ -556,7 +685,7 @@ namespace emp {
       LineRenderer line_renderer;
       TextRenderer text_renderer;
 
-     public:
+      public:
       std::shared_ptr<scenegraph::Camera> camera;
       std::shared_ptr<scenegraph::Eye> eye;
 

@@ -44,7 +44,7 @@ namespace emp {
         bordered_space.AddBorder(padding);
 
         auto scale =
-          MakeAttrs(g::Transform([this, &bordered_space](const auto &p) {
+          MakeAttrs(XyzScaled([this, &bordered_space](const auto &p) {
             return bordered_space.RescalePoint(Xyz::Get(p), data_space);
           }));
 
