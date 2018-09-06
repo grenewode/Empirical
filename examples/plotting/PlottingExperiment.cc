@@ -28,74 +28,6 @@
 #include <chrono>
 #include <cstdlib>
 
-struct Particle {
-  float mass;
-  emp::math::Vec2f position;
-  emp::math::Vec2f velocity;
-  emp::math::Vec2f acceleration;
-
-  Particle(float mass, const emp::math::Vec2f &position)
-    : mass(mass), position(position) {}
-
-  void Step(float dt) {
-    velocity += acceleration * dt;
-    position += velocity * dt;
-    acceleration = {0, 0};
-  }
-
-  void AddForce(const emp::math::Vec2f &force) { acceleration += force / mass; }
-};
-
-template <typename P, typename R>
-void UpdateParticles(P &particles, const R &region) {
-  for (auto &p : particles) {
-    p.Step(0.1);
-  }
-
-  for (int i = 0; i < particles.size(); ++i) {
-    auto &p1 = particles[i];
-    for (int j = i + 1; j < particles.size(); ++j) {
-      auto &p2 = particles[j];
-      auto delta = p2.position - p1.position;
-
-      auto r2 = delta.MagSq();
-
-      if (r2 > 1) {
-        auto force = delta.Normalized() * p1.mass * p2.mass / r2;
-        p1.AddForce(force);
-        p2.AddForce(-force);
-      }
-    }
-    // p1.AddForce({
-    //     10 * (rand() / (float)std::numeric_limits<decltype(rand())>::max()) -
-    //     5,
-    //     10 * (rand() / (float)std::numeric_limits<decltype(rand())>::max()) -
-    //     5,
-    // });
-  }
-
-  for (auto &p : particles) {
-    p.AddForce(-p.velocity);
-
-    if (p.position.x() < region.min.x() || p.position.x() > region.max.x()) {
-      p.velocity.x() *= -1;
-      if (p.position.x() < region.min.x()) {
-        p.position.x() = region.min.x() + 10;
-      } else if (p.position.x() < region.max.x()) {
-        p.position.x() = region.max.x() - 10;
-      }
-    }
-    if (p.position.y() < region.min.y() || p.position.y() > region.max.y()) {
-      p.velocity.y() *= -1;
-      if (p.position.y() < region.min.y()) {
-        p.position.y() = region.min.y() + 10;
-      } else if (p.position.x() < region.max.y()) {
-        p.position.y() = region.max.y() - 10;
-      }
-    }
-  }
-}
-
 emp::scenegraph::FreeType ft;
 
 int main(int argc, char *argv[]) {
@@ -130,29 +62,30 @@ int main(int argc, char *argv[]) {
   // root->Append(plot_subtitle, 0);
   root->Append(plot);
 
-  std::vector<Particle> particles;
+  struct data_t {
+    Vec2f value;
+    Color color;
+  };
+
+  std::vector<data_t> particles;
+  size_t count_particles = 50;
+  for (int i = 0; i < count_particles; ++i) {
+    particles.push_back({Vec2f{i, rand() % 100 - 50},
+                         Color{
+                           (rand() % 1000) / 1000.0f, (rand() % 1000) / 1000.0f,
+                           (rand() % 1000) / 1000.0f,
+                         }});
+  }
 
   auto flow = MakeFlow().Then(scale).Then(line).Data(
-    MakeAttrs(Xyz = [](auto &p) { return p.position; }, PointSize = 1,
-              emp::graphics::Fill =
-                [](auto &p) {
-                  auto v = p.velocity.Normalized();
-                  return Color(std::abs(v.x()), std::abs(v.y()));
-                },
-              emp::graphics::Stroke =
-                [](auto &p) {
-                  auto v = p.velocity.Normalized();
-                  return Color(std::abs(v.x()), std::abs(v.y()));
-                },
-              emp::graphics::StrokeWeight = 5, emp::graphics::TextSize = 16));
+    MakeAttrs(Xyz = [](auto &p) { return p.value; }, PointSize = 1,
+              emp::graphics::Fill = [](auto &p) { return p.color; },
+              emp::graphics::Stroke = [](auto &p) { return p.color; },
+              emp::graphics::StrokeWeight = 1, emp::graphics::TextSize = 16));
 
   auto camera =
     std::make_shared<OrthoCamera>(canvas.getRegion().AddDimension(-100, 100));
   auto eye = std::make_shared<SimpleEye>();
-
-  for (int i = 0; i < 1000; ++i) {
-    particles.emplace_back(10, Vec2f{rand() % 100 - 50, rand() % 100 - 50});
-  }
 
   emp::graphics::Graphics g(canvas, "Roboto", camera, eye);
   canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
@@ -162,10 +95,11 @@ int main(int argc, char *argv[]) {
   canvas.runForever([&](auto &&) {
     g.Clear(Color::grey(0.8));
 
-    UpdateParticles(particles, canvas.getRegion());
     flow(particles.begin(), particles.end());
 
     stage.Render(g, canvas.getRegion());
+
+    particles[rand() % particles.size()].value.y() = rand() % 100 - 50;
   });
 
   return 0;
