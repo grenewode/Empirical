@@ -3,6 +3,8 @@
 
 #include "math/LinAlg.h"
 
+#include <iostream>
+
 namespace emp {
   namespace opengl {
     class Color {
@@ -39,6 +41,11 @@ namespace emp {
     void setUniform(GLint uniform, const Color& value) {
       emp_checked_gl_void(
         glUniform4f(uniform, value.r, value.g, value.b, value.a));
+    }
+
+    std::ostream& operator<<(std::ostream& out, const Color& color) {
+      return out << "rgba(" << color.r << ", " << color.g << color.b << ", "
+                 << color.a << ")";
     }
 
   };  // namespace opengl

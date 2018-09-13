@@ -38,7 +38,7 @@ int main(int argc, char *argv[]) {
   using namespace emp::plot;
   using namespace emp::plot::attributes;
 
-  GLCanvas canvas(500, 500);
+  GLCanvas canvas(800, 800);
   shaders::LoadShaders(canvas);
 
   emp::Resources<FontFace>::Add("Roboto", [] {
@@ -68,20 +68,22 @@ int main(int argc, char *argv[]) {
   };
 
   std::vector<data_t> particles;
-  size_t count_particles = 50;
+  size_t count_particles = 5000;
   for (int i = 0; i < count_particles; ++i) {
-    particles.push_back({Vec2f{i, rand() % 100 - 50},
-                         Color{
-                           (rand() % 1000) / 1000.0f, (rand() % 1000) / 1000.0f,
-                           (rand() % 1000) / 1000.0f,
-                         }});
+    particles.push_back(
+      {Vec2f{i, rand() % 100 - 50}, Color{
+                                      (rand() % 1000) / 1000.0f,
+                                      (rand() % 1000) / 1000.0f,
+                                      (rand() % 1000) / 1000.0f,
+                                    }});
   }
 
-  auto flow = MakeFlow().Then(scale).Then(line).Data(
-    MakeAttrs(Xyz = [](auto &p) { return p.value; }, PointSize = 1,
-              emp::graphics::Fill = [](auto &p) { return p.color; },
-              emp::graphics::Stroke = [](auto &p) { return p.color; },
-              emp::graphics::StrokeWeight = 1, emp::graphics::TextSize = 16));
+  auto flow = MakeFlow().Then(line).Then(scatter).Then(scale).Data(
+    Xyz = [](auto &p) { return p.value; }, PointSize = 1,
+    emp::graphics::Fill =
+      [](auto &p) { return p.color; },  // TODO: allow &data_t::color
+    emp::graphics::Stroke = [](auto &p) { return p.color; },
+    emp::graphics::StrokeWeight = 1, emp::graphics::TextSize = 16);
 
   auto camera =
     std::make_shared<OrthoCamera>(canvas.getRegion().AddDimension(-100, 100));
@@ -99,7 +101,18 @@ int main(int argc, char *argv[]) {
 
     stage.Render(g, canvas.getRegion());
 
-    particles[rand() % particles.size()].value.y() = rand() % 100 - 50;
+    for (int i = 0; i < particles.size(); ++i) {
+      int count = 0;
+      double m = 0;
+      for (int j = std::max(i - 1, 0);
+           j <= std::min(i + 1, (int)particles.size() - 1); ++j) {
+        m += particles[j].value.y();
+        ++count;
+      }
+      particles[i].value.y() = m / count;
+    }
+
+    std::cout << std::endl << std::endl;
   });
 
   return 0;

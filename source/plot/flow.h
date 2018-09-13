@@ -90,11 +90,13 @@ namespace emp {
       private:
       template <typename INPUT_ITER>
       constexpr auto impl_CallHead(INPUT_ITER begin, INPUT_ITER end) const {
+        std::cout << "HEAD" << sizeof...(TAIL) << std::endl;
         return impl__emp_flow::generic_deref::deref(head)(begin, end);
       }
 
       template <typename INPUT_ITER>
       constexpr auto impl_CallTail(INPUT_ITER begin, INPUT_ITER end) const {
+        std::cout << "TAIL" << sizeof...(TAIL) << std::endl;
         return impl__emp_flow::generic_deref::deref(tail)(begin, end);
       }
 
@@ -102,25 +104,27 @@ namespace emp {
       constexpr auto impl_Apply(
         INPUT_ITER begin, INPUT_ITER end,
         const std::false_type& tail_is_not_transform) const {
-        auto tmp{impl_CallTail(begin, end)};
-        return impl_CallHead(std::begin(tmp), std::end(tmp));
+        auto tmp{impl_CallHead(begin, end)};
+        std::cout << "-->>: " << sizeof...(TAIL) << tmp[0] << std::endl;
+        return impl_CallTail(std::begin(tmp), std::end(tmp));
       }
 
       template <typename INPUT_ITER>
       constexpr auto impl_Apply(
         INPUT_ITER begin, INPUT_ITER end,
         const std::true_type& tail_is_not_transform) const {
-        impl_CallTail(begin, end);
+        impl_CallHead(begin, end);
+        std::cout << "-->>: void " << sizeof...(TAIL) << std::endl;
         // Note that it's safe to reuse begin and end here, because they get
         // COPYED into impl_CallTail, not passed by reference.
-        return impl_CallHead(begin, end);
+        return impl_CallTail(begin, end);
       }
 
       public:
       template <typename INPUT_ITER>
       constexpr auto operator()(INPUT_ITER begin, INPUT_ITER end) const {
         return impl_Apply(begin, end,
-                          std::is_void<decltype(impl_CallTail(begin, end))>{});
+                          std::is_void<decltype(impl_CallHead(begin, end))>{});
       }
 
       template <typename NEXT>
@@ -129,9 +133,11 @@ namespace emp {
         return {std::forward<NEXT>(next), *this};
       }
 
-      template <typename MAP>
-      constexpr Source<std::decay_t<MAP>, Sinks> Data(MAP&& map) const {
-        return {std::forward<MAP>(map), *this};
+      template <typename... MAPPING>
+      constexpr auto Data(MAPPING&&... mapping) const {
+        return Source<decltype(MakeAttrs(std::forward<MAPPING>(mapping)...)),
+                      Sinks>{MakeAttrs(std::forward<MAPPING>(mapping)...),
+                             *this};
       }
     };  // namespace plot
 
@@ -165,42 +171,6 @@ namespace emp {
 
         impl__emp_flow::generic_deref::deref(target)(mapped.begin(),
                                                      mapped.end());
-      }
-    };
-
-    template <typename TRANSFORM, typename TARGET>
-    class Transform {
-      public:
-      using transform_t = TRANSFORM;
-      using target_t = TARGET;
-
-      private:
-      transform_t transform;
-      target_t target;
-
-      public:
-      template <typename Tr, typename T>
-      Transform(Tr&& transform, T&& target)
-        : transform(std::forward<Tr>(transform)),
-          target(std::forward<T>(target)) {}
-
-      constexpr Transform() = default;
-      constexpr Transform(const Transform&) = default;
-      constexpr Transform(Transform&&) = default;
-      constexpr Transform& operator=(const Transform&) = default;
-      constexpr Transform& operator=(Transform&&) = default;
-
-      template <typename DATA_ITER>
-      void operator()(DATA_ITER begin, DATA_ITER end) const {
-        auto tmp{
-          impl__emp_flow::generic_deref::deref(transform)(begin, end),
-        };
-        impl__emp_flow::generic_deref::deref(target)(tmp.begin(), tmp.end());
-      }
-
-      template <typename MAP>
-      constexpr Source<std::decay_t<MAP>, Transform> Data(MAP&& map) const {
-        return {std::forward<MAP>(map), *this};
       }
     };
 

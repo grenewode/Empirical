@@ -300,7 +300,7 @@ namespace emp {
         context = emscripten_webgl_create_context(title, &attrs);
 
         emscripten_set_resize_callback(
-          0, this, false,
+          title, this, false,
           [](int, const EmscriptenUiEvent *event, void *data_ptr) -> int {
             auto &me = *static_cast<GLCanvas *>(data_ptr);
             int width = EM_ASM_INT(
@@ -318,10 +318,13 @@ namespace emp {
               },
               me.id.c_str());
 
+            std::cout << "RESIZE!" << std::endl;
+
             me.resize_event.fire(me, width, height);
 
             return false;
           });
+
         emscripten_set_mousedown_callback(
           title, this, false,
           [](int, const EmscriptenMouseEvent *event, void *data_ptr) -> int {
@@ -472,24 +475,27 @@ namespace emp {
 #ifdef __EMSCRIPTEN__
         auto args = std::make_tuple(std::forward<R>(onUpdate), this);
         emscripten_set_main_loop_arg(
-          [](void *argsUnsafe) {
-            auto a = reinterpret_cast<decltype(args) *>(argsUnsafe);
+          [](void *args_unsafe) {
+            auto a = reinterpret_cast<decltype(args) *>(args_unsafe);
             std::get<0> (*a)(*std::get<1>(*a));
           },
           &args, fps, forever);
 #else
         if (fps <= 0) fps = 60;
         glEnable(GL_MULTISAMPLE);
-        // auto frameStart = std::chrono::system_clock::now();
+        auto frameStart = std::chrono::system_clock::now();
 
         while (!glfwWindowShouldClose(window)) {
-          // auto frameCurrent = std::chrono::system_clock::now();
-          // if (frameCurrent - frameStart >=
-          //     std::chrono::milliseconds((int)(1000.f / fps))) {
-          onUpdate(*this);
-          glfwSwapBuffers(window);
-          // frameStart = std::chrono::system_clock::now();
-          // }
+          auto frameCurrent = std::chrono::system_clock::now();
+          if (frameCurrent - frameStart >=
+              std::chrono::milliseconds((int)(1000.f / fps))) {
+            onUpdate(*this);
+            glfwSwapBuffers(window);
+
+            frameStart = std::chrono::system_clock::now();
+          } else {
+            std::this_thread::yield();
+          }
           glfwPollEvents();
         }
 #endif

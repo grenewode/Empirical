@@ -984,15 +984,20 @@ namespace emp {
     }
 
     namespace __attrs_impl {
-      template <class...>
+      template <typename...>
       struct print_attrs_tag {};
 
-      template <class... T, class H>
+      template <typename... T>
+      void PrintAttrs(std::ostream& out, const Attrs<T...>& attrs,
+                      const print_attrs_tag<>&) {}
+
+      template <typename... T, typename H>
       void PrintAttrs(std::ostream& out, const Attrs<T...>& attrs,
                       const print_attrs_tag<H>&) {
         out << H::name << " = " << H::attribute_type::Get(attrs);
       }
-      template <class... T, class H0, class H1, class... U>
+
+      template <typename... T, typename H0, typename H1, typename... U>
       void PrintAttrs(std::ostream& out, const Attrs<T...>& attrs,
                       const print_attrs_tag<H0, H1, U...>&) {
         out << H0::name << " = " << H0::attribute_type::Get(attrs) << ", ";
@@ -1000,17 +1005,14 @@ namespace emp {
       }
     }  // namespace __attrs_impl
 
-    template <class H, class... T>
-    std::ostream& operator<<(std::ostream& out, const Attrs<H, T...>& attrs) {
+    template <typename... T>
+    std::ostream& operator<<(std::ostream& out, const Attrs<T...>& attrs) {
       out << "{ ";
       __attrs_impl::PrintAttrs(out, attrs,
-                               __attrs_impl::print_attrs_tag<H, T...>{});
+                               __attrs_impl::print_attrs_tag<T...>{});
       return out << " }";
     }
 
-    std::ostream& operator<<(std::ostream& out, const Attrs<>& attrs) {
-      return out << "{ }";
-    }
   }  // namespace tools
 }  // namespace emp
 
