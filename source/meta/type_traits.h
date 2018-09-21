@@ -84,7 +84,7 @@ namespace emp {
     static constexpr bool ConvertOK(T *) { return false; }
   };
 
-  namespace detail {
+  namespace impl__emp_type_traits_is_invocable_helper {
     template <typename Fn, typename... Args>
     struct is_invocable_helper {
       private:
@@ -117,7 +117,8 @@ namespace emp {
 
   template <typename Fn, typename... Args>
   struct is_invocable
-    : decltype(detail::is_invocable_helper<Fn, Args...>::value()) {};
+    : decltype(impl__emp_type_traits_is_invocable_helper::is_invocable_helper<Fn, Args...>::value()) {};
+
 
   // @todo: It might be a good idea to move these to a separate file
   // @todo: should these be using the std naming convention?

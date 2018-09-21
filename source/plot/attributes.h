@@ -7,6 +7,11 @@ namespace emp {
   namespace plot {
     namespace attributes {
       DEFINE_ATTR(Xyz);
+      DEFINE_ATTR(X);
+      DEFINE_ATTR(Y);
+      DEFINE_ATTR(Z);
+      DEFINE_ATTR(W);
+      
       DEFINE_ATTR(XyzScaled);
       DEFINE_ATTR(PointSize);
       DEFINE_ATTR(StrokeWeight);
