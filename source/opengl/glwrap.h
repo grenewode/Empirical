@@ -479,6 +479,56 @@ namespace emp {
 
     GLuint VertexArrayObject::boundVAO = 0;
 
+    class Framebuffer {
+      private:
+      static GLuint bound_framebuffer;
+      GLuint handle = 0;
+
+      public:
+      explicit Framebuffer() { glGenFramebuffers(1, &handle); }
+
+      Framebuffer(const Framebuffer&) = delete;
+      Framebuffer(Framebuffer&& other) : handle(other.handle) {
+        other.handle = 0;
+      }
+      Framebuffer& operator=(const Framebuffer&) = delete;
+      Framebuffer& operator=(Framebuffer&& other) {
+        if (&other != this) {
+          handle = other.handle;
+          other.handle = 0;
+        }
+        return *this;
+      }
+
+      ~Framebuffer() { Delete(); }
+
+      void Bind() {
+        bound_framebuffer = handle;
+        glBindFramebuffer(GL_FRAMEBUFFER, handle);
+      }
+
+      void Unbind() {
+        bound_framebuffer = 0;
+        glBindFramebuffer(GL_FRAMEBUFFER, handle);
+      }
+
+      void Delete() {
+        if (*this) {
+          Unbind();
+          glDeleteFramebuffers(1, &handle);
+        }
+      }
+
+      bool IsComplete() const {
+        return glCheckFramebufferStatus(handle) == GL_FRAMEBUFFER_COMPLETE;
+      }
+
+      operator bool() const { return handle != 0; }
+      operator GLuint() const { return handle; }
+    };
+
+    GLuint Framebuffer::bound_framebuffer = 0;
+
   }  // namespace opengl
 }  // namespace emp
 #endif
