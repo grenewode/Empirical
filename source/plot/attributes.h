@@ -11,10 +11,12 @@ namespace emp {
       DEFINE_ATTR(Y);
       DEFINE_ATTR(Z);
       DEFINE_ATTR(W);
+      DEFINE_ATTR(Size);
       
       DEFINE_ATTR(XyzScaled);
       DEFINE_ATTR(PointSize);
       DEFINE_ATTR(StrokeWeight);
+      DEFINE_ATTR(Color);
     }  // namespace attributes
   }  // namespace plot
 }  // namespace emp

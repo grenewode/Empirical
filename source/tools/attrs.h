@@ -99,41 +99,86 @@ namespace emp {
         /// std::transform(packs.begin(), packs.end(), MyAttr::Get);
         /// </code>
         static constexpr struct get_t {
-          template <class T>
+          template <typename T>
           constexpr const T& operator()(const value_t<T>& target) const {
             return *target;
           }
 
-          template <class T>
+          template <typename T>
           constexpr T& operator()(value_t<T>& target) const {
             return *target;
           }
 
-          template <class T>
+          template <typename T>
           constexpr T&& operator()(value_t<T>&& target) const {
             return *std::move(target);
           }
 
-          template <class T>
+          template <typename T>
           constexpr const T&& operator()(const value_t<T>&& target) const {
             return *std::move(target);
           }
         } Get{};
 
+        // TODO: this should be moved out of attributes & into a separeate
+        // place, as it's behavior is not clearly obvious to define in
+        // non-plotting contexts
         // -- CallOrGet --
         private:
+        // Handle the case when Get(target) is not callable & is not a member
+        // pointer & is not a member function pointer
+        template <typename T, typename... U>
+        static constexpr auto impl_CallOrGetAttributeCheckMemberFunction(
+          const std::false_type& is_member_function, T&& target, U&&... args) {
+          return GetAttribute(std::forward<T>(target));
+        }
+
+        // Handle the case when Get(target) is a member pointer
+        template <typename T, typename O, typename... U>
+        static constexpr auto impl_CallOrGetAttributeCheckMemberFunction(
+          const std::true_type& is_member_function, T&& target, O&& obj,
+          U&&... args) {
+          return Make((std::forward<O>(obj).*
+                       Get(std::forward<T>(target)))(std::forward<U>(args)...));
+        }
+
+        // Handle the case when Get(target) is not callable & is not a member
+        // pointer
+        template <typename T, typename... U>
+        static constexpr auto impl_CallOrGetAttributeCheckMember(
+          const std::false_type& is_member, T&& target, U&&... args) {
+          using ValueOfTargetType =
+            std::decay_t<decltype(Get(std::forward<T>(target)))>;
+
+          return impl_CallOrGetAttributeCheckMemberFunction(
+            std::is_member_function_pointer<ValueOfTargetType>{},
+            std::forward<T>(target), std::forward<U>(args)...);
+        }
+
+        // Handle the case when Get(target) is a member pointer
+        template <typename T, typename O, typename... U>
+        static constexpr auto impl_CallOrGetAttributeCheckMember(
+          const std::true_type& is_member, T&& target, O&& obj, U&&... args) {
+          return Make(std::forward<O>(obj).*Get(std::forward<T>(target)));
+        }
+
         // Handle the case when Get(target) is callable
         template <class T, class... U>
-        static constexpr auto __impl_CallOrGetAttribute(
-          const std::true_type& isCallable, T&& target, U&&... args) {
+        static constexpr auto impl_CallOrGetAttribute(
+          const std::true_type& is_callable, T&& target, U&&... args) {
           return Make(Get(std::forward<T>(target))(std::forward<U>(args)...));
         }
 
         // Handle the case when Get(target) is not callable
         template <class T, class... U>
-        static constexpr auto __impl_CallOrGetAttribute(
-          const std::false_type& isCallable, T&& target, U&&... args) {
-          return GetAttribute(std::forward<T>(target));
+        static constexpr auto impl_CallOrGetAttribute(
+          const std::false_type& is_callable, T&& target, U&&... args) {
+          using ValueOfTargetType =
+            std::decay_t<decltype(Get(std::forward<T>(target)))>;
+
+          return impl_CallOrGetAttributeCheckMember(
+            std::is_member_pointer<ValueOfTargetType>{},
+            std::forward<T>(target), std::forward<U>(args)...);
         }
 
         public:
@@ -146,7 +191,7 @@ namespace emp {
           constexpr decltype(auto) operator()(V&& target, U&&... args) const {
             using ValueOfTargetType = decltype(Get(std::forward<V>(target)));
 
-            return __impl_CallOrGetAttribute(
+            return impl_CallOrGetAttribute(
               // Check if the target attribute value is invocable
               emp::is_invocable<ValueOfTargetType,
                                 decltype(std::forward<U>(args))...>{},

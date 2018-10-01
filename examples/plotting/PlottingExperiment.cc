@@ -36,6 +36,8 @@ struct JoinGeometries : geom_tag {
   G1 first;
   G2 second;
 
+  JoinGeometries(G1 first, G2 second) : first(first), second(second) {}
+
   template <typename DATA_ITER>
   void operator()(emp::graphics::Graphics &g, DATA_ITER begin,
                   DATA_ITER end) const {
@@ -45,7 +47,7 @@ struct JoinGeometries : geom_tag {
 };
 
 template <typename G1, typename G2>
-JoinGeometries<G1, G2> geom_join(const G1& g1, const G2& g2) {
+JoinGeometries<G1, G2> geom_join(const G1 &g1, const G2 &g2) {
   return {g1, g2};
 }
 
@@ -54,25 +56,112 @@ struct JoinScales : scale_tag {
   S1 first;
   S2 second;
 
+  JoinScales(S1 first, S2 second) : first(first), second(second) {}
+
   template <typename DATA_ITER>
-  void operator()(emp::graphics::Graphics &g, DATA_ITER begin,
+  auto operator()(emp::graphics::Graphics &g, DATA_ITER begin,
                   DATA_ITER end) const {
     auto scaled = first(g, begin, end);
-    second(g, std::begin(scaled), std::end(scaled));
+    return second(g, std::begin(scaled), std::end(scaled));
   }
 };
 
 template <typename S1, typename S2>
-JoinGeometries<S1, S2> scale_join(const S1& s1, const S2& s2) {
+constexpr JoinScales<S1, S2> scale_join(const S1 &s1, const S2 &s2) {
   return {s1, s2};
 }
 
-template<typename A>
-struct LinearScale {
+template <typename ATTR>
+struct LinearScale : scale_tag {
+  float dest_min, dest_max;
+
+  constexpr LinearScale(float dest_min, float dest_max)
+    : dest_min(dest_min), dest_max(dest_max) {}
+
+  template <typename DATA_ITER>
+  auto operator()(emp::graphics::Graphics &g, DATA_ITER begin,
+                  DATA_ITER end) const {
+    using value_type = typename std::iterator_traits<DATA_ITER>::value_type;
+    using scaled_value_type = decltype(ATTR::Get(std::declval<value_type>()));
+
+    scaled_value_type min{
+      std::numeric_limits<std::decay_t<scaled_value_type>>::max()};
+    scaled_value_type max{
+      std::numeric_limits<std::decay_t<scaled_value_type>>::lowest()};
+
+    for (auto iter{begin}; iter != end; ++iter) {
+      min = std::min(min, ATTR::Get(*iter));
+      max = std::max(max, ATTR::Get(*iter));
+    }
+
+    auto scale_function = [=](const auto &value) {
+      auto scaled{((ATTR::Get(value) - min) / (max - min)) *
+                    (dest_max - dest_min) +
+                  dest_min};
+
+      return Merge(ATTR::Make(scaled), value);
+    };
+
+    using result_type = decltype(scale_function(std::declval<value_type>()));
+
+    std::vector<result_type> results;
+    std::transform(begin, end, std::back_inserter(results), scale_function);
+
+    return results;
+  }
+};
+
+template <typename X, typename Y>
+struct Scatter2D : geom_tag {
+  private:
+  emp::graphics::Mesh point_mesh;
+
+  public:
+  Scatter2D(const emp::graphics::Mesh &mesh = emp::graphics::Mesh::Polygon(5))
+    : point_mesh(mesh) {}
+
   template <typename DATA_ITER>
   void operator()(emp::graphics::Graphics &g, DATA_ITER begin,
                   DATA_ITER end) const {
-    auto minmax = std::minmax_element(begin, end);
+    auto pen = g.Fill(point_mesh);
+
+    for (; begin != end; ++begin) {
+      auto color{emp::plot::attributes::Color::Get(*begin)};
+      auto x{emp::plot::attributes::X::Get(*begin)};
+      auto y{emp::plot::attributes::Y::Get(*begin)};
+      auto size{
+        emp::plot::attributes::Size::GetOrElse(*begin, [] { return 1; })};
+
+      pen.Draw({
+        emp::graphics::Fill = color,
+        emp::graphics::Transform = emp::math::Mat4x4f::Translation(x, y) *
+                                   emp::math::Mat4x4f::Scale(size),
+      });
+    }
+
+    pen.Flush();
+  }
+};
+
+template <typename X, typename Y>
+struct Line2D : geom_tag {
+  public:
+  template <typename DATA_ITER>
+  void operator()(emp::graphics::Graphics &g, DATA_ITER begin,
+                  DATA_ITER end) const {
+    g.Line(begin, end,
+           MakeAttrs(
+             emp::graphics::Vertex =
+               [](auto &pt) {
+                 return emp::math::Vec2f{
+                   X::Get(pt),
+                   Y::Get(pt),
+                 };
+               },
+             emp::graphics::Stroke = emp::plot::attributes::Color::Get,
+             emp::graphics::StrokeWeight = emp::plot::attributes::Size::Get))
+      .Draw(emp::graphics::Transform = emp::math::Mat4x4f::Identity())
+      .Flush();
   }
 };
 
@@ -92,25 +181,26 @@ class CPPPlot {
   template <typename DATA_ITER>
   void operator()(emp::graphics::Graphics &g, DATA_ITER begin,
                   DATA_ITER end) const {
-    std::vector<decltype(aes_mapping(*begin))> aes;
+    using data_type = typename std::iterator_traits<DATA_ITER>::value_type;
+    std::vector<decltype(aes_mapping(std::declval<data_type>()))> aes;
 
     std::transform(begin, end, std::back_inserter(aes), aes_mapping);
 
-    auto scaled = scale(std::begin(aes), std::end(aes));
+    auto scaled = scale(g, std::begin(aes), std::end(aes));
 
     geometry(g, std::begin(scaled), std::end(scaled));
   }
 
   private:
   template <typename E>
-  auto impl_append(const E &element, const std::true_type &is_a_geom) {
+  auto impl_append(const E &element, const std::true_type &is_a_geom) const {
     auto new_geom = geom_join(geometry, element);
     return CPPPlot<AES, decltype(new_geom), SCALE>{aes_mapping, new_geom,
                                                    scale};
   }
 
   template <typename E>
-  auto impl_append(const E &element, const std::false_type &is_a_geom) {
+  auto impl_append(const E &element, const std::false_type &is_a_geom) const {
     auto new_scale = scale_join(scale, element);
     return CPPPlot<AES, GEOM, decltype(new_scale)>{aes_mapping, geometry,
                                                    new_scale};
@@ -118,7 +208,7 @@ class CPPPlot {
 
   public:
   template <typename E>
-  auto append(const E &element) {
+  auto append(const E &element) const {
     return impl_append(element, std::is_base_of<geom_tag, E>{});
   }
 };
@@ -133,8 +223,9 @@ struct NopScale : scale_tag {
   template <typename DATA_ITER>
   auto operator()(emp::graphics::Graphics &g, DATA_ITER begin,
                   DATA_ITER end) const {
-    return std::vector<typename std::iterator_traits<DATA_ITER>::value_type>{
-      begin, end};
+    std::vector<typename std::iterator_traits<DATA_ITER>::value_type> data;
+    for (; begin != end; ++begin) data.emplace_back(*begin);
+    return data;
   }
 };
 
@@ -145,18 +236,20 @@ auto cppplot(AES &&... aes) {
   return CPPPlot<decltype(aes_attrs), NopGeom, NopScale>(aes_attrs, {}, {});
 }
 
-template<typename AES, typename GEOM, typename SCALE, typename E>
-auto operator+(const CPPPlot<AES, GEOM, SCALE>& cppplot, const E& element) {
-return cppplot.append(element);
+template <typename AES, typename GEOM, typename SCALE, typename E>
+auto operator+(const CPPPlot<AES, GEOM, SCALE> &cppplot, const E &element) {
+  return cppplot.append(element);
 }
-template<typename AES, typename GEOM, typename SCALE, typename E>
-auto operator+(const E& element, const CPPPlot<AES, GEOM, SCALE>& cppplot) {
-return cppplot.append(element);
+template <typename AES, typename GEOM, typename SCALE, typename E>
+auto operator+(const E &element, const CPPPlot<AES, GEOM, SCALE> &cppplot) {
+  return cppplot.append(element);
 }
 
 emp::scenegraph::FreeType ft;
 
 int main(int argc, char *argv[]) {
+  using namespace emp::plot;
+  using namespace emp::opengl;
 
   emp::opengl::GLCanvas canvas(800, 800);
   emp::opengl::shaders::LoadShaders(canvas);
@@ -167,115 +260,37 @@ int main(int argc, char *argv[]) {
     return font;
   });
 
-
-  auto camera =
-    std::make_shared<emp::scenegraph::OrthoCamera>(canvas.getRegion().AddDimension(-100,
-    100));
+  auto camera = std::make_shared<emp::scenegraph::OrthoCamera>(
+    canvas.GetRegion().AddDimension(-100, 100));
   auto eye = std::make_shared<emp::scenegraph::SimpleEye>();
 
   emp::graphics::Graphics g(canvas, "Roboto", camera, eye);
   canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
-    camera->SetViewbox(canvas.getRegion().AddDimension(-100, 100));
+    camera->SetViewbox(canvas.GetRegion().AddDimension(-100, 100));
   });
 
-// The part we care about for now:
-  // cppplot(emp::plot::attributes::X = [](auto& pt) {return pt.x;}, emp::plot::attributes::Y = [](auto& pt) {return pt.x;}) + ;
+  struct pt_type {
+    float x, y;
+  };
 
-  // using namespace emp::opengl;
-  // using namespace emp::math;
-  // using namespace emp::scenegraph;
-  // using namespace emp::graphics;
-  // using namespace emp::plot;
-  // using namespace emp::opengl;
-  // using namespace emp::math;
-  // using namespace emp::scenegraph;
-  // using namespace emp::graphics;
-  // using namespace emp::plot;
-  // using namespace emp::plot::attributes;
-  // using namespace emp::plot::attributes;
+  std::vector<pt_type> pts;
 
-  // GLCanvas canvas(800, 800);
-  // shaders::LoadShaders(canvas);
+  canvas.runForever([&](auto &&) {
+    g.Clear(emp::opengl::Color::grey(0.8));
 
-  // emp::Resources<FontFace>::Add("Roboto", [] {
-  //   auto font = ft.load("Assets/RobotoMono-Regular.ttf");
-  //   font.SetFreeTypePixelSize(0, 64);
-  //   font.BulidAsciiAtlas();
-  //   return font;
-  // });
+    auto region = canvas.GetRegion();
 
-  // Stage<2> stage;
-  // auto root = stage.MakeRoot<Flow<2>>(true, FlowDirection<2>::Y);
-  // auto line{std::make_shared<Line<2>>()};
-  // auto scatter{std::make_shared<Scatter<2>>(Mesh::Polygon(32, {2, 2}))};
-  // auto scale{std::make_shared<Scale<2>>()};
+    auto p = cppplot(attributes::X = &pt_type::x, attributes::Y = &pt_type::y,
+                     attributes::Color = Color::red(), attributes::Size = 1) +
+             LinearScale<struct attributes::X>{region.min.x(), region.max.x()} +
+             LinearScale<struct attributes::Y>{region.min.y(), region.max.y()} +
+             Scatter2D<struct attributes::X, struct attributes::Y>{} +
+             Line2D<struct attributes::X, struct attributes::Y>{};
 
-  // auto plot{std::make_shared<Stack<2>>()};
-  // auto plot_title{std::make_shared<Text<2>>("Hello World", 32)};
-  // // auto plot_subtitle{std::make_shared<Text<2>>("details", 18)};
-  // plot->Append(line).Append(scatter).Append(scale);
-  // root->Append(plot_title, 0);
-  // // root->Append(plot_subtitle, 0);
-  // root->Append(plot);
+    p(g, std::begin(pts), std::end(pts));
 
-  // struct data_t {
-  //   Vec2f value;
-  //   Color color;
-  // };
-
-  // std::vector<data_t> particles;
-  // size_t count_particles = 5000;
-  // for (int i = 0; i < count_particles; ++i) {
-  //   particles.push_back(
-  //     {Vec2f{i, rand() % 100 - 50}, Color{
-  //                                     (rand() % 1000) / 1000.0f,
-  //                                     (rand() % 1000) / 1000.0f,
-  //                                     (rand() % 1000) / 1000.0f,
-  //                                   }});
-  // }
-
-  // auto flow = MakeFlow().Then(line).Then(scatter).Then(scale).Data(
-  //   Xyz = [](auto &p) { return p.value; }, PointSize = 1,
-  //   emp::graphics::Fill =
-  //     [](auto &p) { return p.color; },  // TODO: allow &data_t::color
-  //   emp::graphics::Stroke = [](auto &p) { return p.color; },
-  //   emp::graphics::StrokeWeight = 1, emp::graphics::TextSize = 16);
-
-  // auto camera =
-  //   std::make_shared<OrthoCamera>(canvas.getRegion().AddDimension(-100,
-  //   100));
-  // auto eye = std::make_shared<SimpleEye>();
-
-  // emp::graphics::Graphics g(canvas, "Roboto", camera, eye);
-  // canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
-  //   camera->SetViewbox(canvas.getRegion().AddDimension(-100, 100));
-  // });
-
-  // canvas.runForever([&](auto &&) {
-  //   g.Clear(Color::grey(0.8));
-
-  //   // auto g = plot(particles.begin(), particles.end(),
-  //   //               aes(X = [](auto) {}, Y = [](auto) {})) +
-  //   //          linear_scale<X>() + linear_scale<Y>() +
-  //   //          scatter(aes(Color = Color::Red));
-
-  //   flow(particles.begin(), particles.end());
-
-  //   stage.Render(g, canvas.getRegion());
-
-  //   for (int i = 0; i < particles.size(); ++i) {
-  //     int count = 0;
-  //     double m = 0;
-  //     for (int j = std::max(i - 1, 0);
-  //          j <= std::min(i + 1, (int)particles.size() - 1); ++j) {
-  //       m += particles[j].value.y();
-  //       ++count;
-  //     }
-  //     particles[i].value.y() = m / count;
-  //   }
-
-  //   std::cout << std::endl << std::endl;
-  // });
-
-  // return 0;
+    pts.clear();
+    for (int i = 0; i < 100000; ++i)
+      pts.push_back({static_cast<float>(rand()), static_cast<float>(rand())});
+  });
 }

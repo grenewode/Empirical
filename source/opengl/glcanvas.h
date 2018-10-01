@@ -522,10 +522,10 @@ namespace emp {
         return BufferObject<TYPE>(handle);
       }
 
-      auto getWidth() const { return width; }
-      auto getHeight() const { return height; }
+      auto GetWidth() const { return width; }
+      auto GetHeight() const { return height; }
 
-      auto getRegion() const { return region; }
+      auto GetRegion() const { return region; }
     };
 
   }  // namespace opengl
