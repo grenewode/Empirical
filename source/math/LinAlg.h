@@ -638,7 +638,7 @@ namespace emp {
         return data[r * columns + c];
       }
 
-      constexpr Row<const F, C> Row(std::size_t r) const {
+      constexpr math::Row<const F, C> Row(std::size_t r) const {
         if (r >= rows) {
           throw std::out_of_range("rows out of bounds");
         }
@@ -654,7 +654,7 @@ namespace emp {
         return math::Row<F, C>(&data[r * columns]);
       }
 
-      constexpr Col<const F, R> Col(std::size_t c) const {
+      constexpr math::Col<const F, R> Col(std::size_t c) const {
         if (c >= columns) {
           throw std::out_of_range("columns out of bounds");
         }

@@ -12,6 +12,7 @@
 #include "VertexAttributes.h"
 #include "base/assert.h"
 #include "glutils.h"
+#include "texture.h"
 
 namespace emp {
   namespace opengl {
@@ -99,8 +100,8 @@ namespace emp {
       DynamicCopy = GL_DYNAMIC_COPY
     };
 
-    namespace __impl {
-      GLuint boundBuffer = 0;
+    namespace emp__impl_BufferObject_bound_buffer {
+      GLuint bound_buffer = 0;
     }
 
     template <BufferType TYPE>
@@ -131,13 +132,15 @@ namespace emp {
       void destroy() {
         if (handle != 0) {
           emp_checked_gl_void(glDeleteBuffers(1, &handle));
-          if (__impl::boundBuffer == handle) __impl::boundBuffer = 0;
+          if (emp__impl_BufferObject_bound_buffer::bound_buffer == handle)
+            emp__impl_BufferObject_bound_buffer::bound_buffer = 0;
         }
       }
 
       template <typename T>
       void init(const T* data, std::size_t size, BufferUsage usage) {
-        bind();
+        emp_assert(handle == emp__impl_BufferObject_bound_buffer::bound_buffer,
+                   "the BufferObject must be bound");
         emp_checked_gl_void(glBufferData(static_cast<GLenum>(TYPE), size, data,
                                          static_cast<GLenum>(usage)));
       }
@@ -154,7 +157,8 @@ namespace emp {
 
       template <typename T>
       void subset(const T* data, std::size_t size, std::size_t offset = 0) {
-        bind();
+        emp_assert(handle == emp__impl_BufferObject_bound_buffer::bound_buffer,
+                   "the BufferObject must be bound");
         emp_checked_gl_void(
           glBufferSubData(static_cast<GLenum>(TYPE), offset, size, data));
       }
@@ -171,7 +175,8 @@ namespace emp {
 #ifndef EMSCRIPTEN
       template <class T>
       T* map(std::size_t offset, std::size_t length, BufferAccess access) {
-        bind();
+        emp_assert(handle == emp__impl_BufferObject_bound_buffer::bound_buffer,
+                   "the BufferObject must be bound");
         auto buffer = static_cast<T*>(emp_checked_gl(
           glMapBufferRange(static_cast<GLenum>(TYPE), offset, length,
                            static_cast<GLenum>(access))));
@@ -184,17 +189,19 @@ namespace emp {
       }
 
       bool unmap() {
-        bind();
+        emp_assert(handle == emp__impl_BufferObject_bound_buffer::bound_buffer,
+                   "the BufferObject must be bound");
         auto unmap = emp_checked_gl(glUnmapBuffer(static_cast<GLenum>(TYPE)));
         return unmap;
       }
 #endif
 
       BufferObject& bind() {
-        if (__impl::boundBuffer != handle) {
-          emp_checked_gl_void(glBindBuffer(static_cast<GLenum>(TYPE), handle));
-          __impl::boundBuffer = handle;
-        }
+        emp_assert(handle != 0, "the BufferObject must have been created");
+        emp_assert(handle != emp__impl_BufferObject_bound_buffer::bound_buffer,
+                   "the BufferObject must not be bound");
+        emp_checked_gl_void(glBindBuffer(static_cast<GLenum>(TYPE), handle));
+        emp__impl_BufferObject_bound_buffer::bound_buffer = handle;
 
         return *this;
       }
@@ -450,7 +457,7 @@ namespace emp {
       }
 
       void bind() {
-        emp_assert(handle != 0);
+        emp_assert(handle != 0, "the VertexArrayObject must have been created");
         if (boundVAO != handle) {
           emp_checked_gl_void(glBindVertexArray(handle));
           boundVAO = handle;
@@ -458,16 +465,15 @@ namespace emp {
       }
 
       void unbind() {
-        emp_assert(handle != 0, "Ensure that this buffer has been created");
-        if (boundVAO == handle) {
-          emp_checked_gl_void(glBindVertexArray(0));
-          boundVAO = 0;
-        }
+        emp_assert(handle != 0, "the VertexArrayObject must have been created");
+        emp_assert(handle == boundVAO, "the VertexArrayObject must be bound");
+        emp_checked_gl_void(glBindVertexArray(0));
+        boundVAO = 0;
       }
 
       template <typename... T>
       VertexArrayObject& attr(T&&... vertexAttributes) {
-        bind();
+        emp_assert(handle == boundVAO, "the VertexArrayObject must be bound");
         applyAll(std::forward<T>(vertexAttributes)...);
 
         return *this;
@@ -479,13 +485,101 @@ namespace emp {
 
     GLuint VertexArrayObject::boundVAO = 0;
 
+    enum class RenderbufferFormat : GLenum {
+      RGBA4 = GL_RGB4,
+      RGB565 = GL_RGB565,
+      RGB5_A1 = GL_RGB5_A1,
+      DepthComponent16 = GL_DEPTH_COMPONENT16,
+      StencilIndex8 = GL_STENCIL_INDEX8,
+      Depth24Stencil8 = GL_DEPTH24_STENCIL8
+    };
+
+    class Renderbuffer {
+      private:
+      static GLuint bound_renderbuffer;
+      GLuint handle = 0;
+      RenderbufferFormat format;
+
+      public:
+      explicit Renderbuffer(RenderbufferFormat format) : format(format) {
+        emp_checked_gl_void(glGenRenderbuffers(1, &handle));
+      }
+      Renderbuffer(const Renderbuffer&) = delete;
+
+      Renderbuffer(Renderbuffer&& other) : handle(other.handle) {
+        other.handle = 0;
+      }
+
+      Renderbuffer& operator=(const Renderbuffer&) = delete;
+      Renderbuffer& operator=(Renderbuffer&& other) {
+        if (this != &other) {
+          Delete();
+          handle = other.handle;
+          other.handle = 0;
+          format = other.format;
+        }
+        return *this;
+      }
+
+      ~Renderbuffer() { Delete(); }
+
+      void Delete() {
+        if (handle != 0) {
+          emp_checked_gl_void(glDeleteRenderbuffers(1, &handle));
+          handle = 0;
+        }
+      }
+
+      void Bind() {
+        emp_assert(handle != 0,
+                   "Cannot bind an buffer which is not initialized");
+        if (handle != bound_renderbuffer) {
+          emp_checked_gl_void(glBindRenderbuffer(GL_RENDERBUFFER, handle));
+          bound_renderbuffer = handle;
+        }
+      }
+
+      void Unbind() {
+        emp_assert(handle == bound_renderbuffer,
+                   "the renderbuffer must be bound");
+        emp_checked_gl_void(glBindBuffer(GL_RENDERBUFFER, 0));
+        bound_renderbuffer = 0;
+      }
+
+      void Store(int width, int height) { Store(format, width, height); }
+
+      void Store(RenderbufferFormat format, int width, int height) {
+        emp_assert(handle == bound_renderbuffer,
+                   "the renderbuffer must be bound");
+        emp_checked_gl_void(glRenderbufferStorage(
+          GL_RENDERBUFFER, static_cast<GLenum>(format), width, height));
+        this->format = format;
+      }
+
+      RenderbufferFormat GetFormat() const { return format; }
+
+      operator GLuint() const { return handle; }
+      operator bool() const { return handle != 0; }
+    };
+
+    GLuint Renderbuffer::bound_renderbuffer = 0;
+
+    enum class FramebufferAttachment : GLenum {
+      Color0 = GL_COLOR_ATTACHMENT0,
+      Depth = GL_DEPTH_ATTACHMENT,
+      Stencil = GL_STENCIL_ATTACHMENT,
+      DepthStencil = GL_DEPTH_STENCIL_ATTACHMENT
+    };
+
     class Framebuffer {
       private:
       static GLuint bound_framebuffer;
       GLuint handle = 0;
 
       public:
-      explicit Framebuffer() { glGenFramebuffers(1, &handle); }
+      explicit Framebuffer() {
+        emp_checked_gl_void(glGenFramebuffers(1, &handle));
+      }
 
       Framebuffer(const Framebuffer&) = delete;
       Framebuffer(Framebuffer&& other) : handle(other.handle) {
@@ -494,6 +588,7 @@ namespace emp {
       Framebuffer& operator=(const Framebuffer&) = delete;
       Framebuffer& operator=(Framebuffer&& other) {
         if (&other != this) {
+          Delete();
           handle = other.handle;
           other.handle = 0;
         }
@@ -503,24 +598,51 @@ namespace emp {
       ~Framebuffer() { Delete(); }
 
       void Bind() {
-        bound_framebuffer = handle;
-        glBindFramebuffer(GL_FRAMEBUFFER, handle);
+        if (handle != bound_framebuffer) {
+          bound_framebuffer = handle;
+          emp_checked_gl_void(glBindFramebuffer(GL_FRAMEBUFFER, handle));
+        }
       }
 
       void Unbind() {
+        emp_assert(handle == bound_framebuffer,
+                   "the framebuffer must be bound");
         bound_framebuffer = 0;
-        glBindFramebuffer(GL_FRAMEBUFFER, handle);
+        emp_checked_gl_void(glBindFramebuffer(GL_FRAMEBUFFER, 0));
+      }
+
+      void Attach(
+        const Texture2d& target,
+        FramebufferAttachment attachement = FramebufferAttachment::Color0,
+        int mipmap_level = 0) {
+        emp_assert(handle == bound_framebuffer,
+                   "the framebuffer must be bound");
+        emp_checked_gl_void(glFramebufferTexture2D(
+          GL_FRAMEBUFFER, static_cast<GLenum>(attachement), GL_TEXTURE_2D,
+          target, mipmap_level));
+      }
+
+      void Attach(const Renderbuffer& renderbuffer,
+                  FramebufferAttachment attachement) {
+        emp_assert(handle == bound_framebuffer,
+                   "the framebuffer must be bound");
+        emp_checked_gl_void(glFramebufferRenderbuffer(
+          GL_FRAMEBUFFER, static_cast<GLenum>(attachement), GL_RENDERBUFFER,
+          renderbuffer));
       }
 
       void Delete() {
         if (*this) {
           Unbind();
-          glDeleteFramebuffers(1, &handle);
+          emp_checked_gl_void(glDeleteFramebuffers(1, &handle));
         }
       }
 
       bool IsComplete() const {
-        return glCheckFramebufferStatus(handle) == GL_FRAMEBUFFER_COMPLETE;
+        emp_assert(handle == bound_framebuffer,
+                   "the framebuffer must be bound");
+        return emp_checked_gl(glCheckFramebufferStatus(GL_FRAMEBUFFER)) ==
+               GL_FRAMEBUFFER_COMPLETE;
       }
 
       operator bool() const { return handle != 0; }

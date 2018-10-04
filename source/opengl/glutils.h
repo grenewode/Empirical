@@ -1,6 +1,10 @@
 #ifndef GL_UTILS_H
 #define GL_UTILS_H
 
+#ifndef NDEBUG
+#include <iostream>
+#endif
+
 #include "assert.h"
 
 #include <ostream>
@@ -39,18 +43,31 @@ namespace emp {
       }
 
 #ifndef NDEBUG
-#define emp_checked_gl(GL_CALL)                 \
-  ([&] {                                        \
-    auto result{GL_CALL};                       \
-    auto error{glGetError()};                   \
-    emp_assert(error == GL_NO_ERROR, #GL_CALL); \
-    return result;                              \
+      bool emp_get_gl_errors(const char* file, int line, const char* call) {
+        GLenum first_error{glGetError()};
+        for (GLenum error{first_error}; error != GL_NO_ERROR;
+             error = glGetError()) {
+          std::cerr << file << ": " << line << ": error in call to " << call
+                    << ": " << static_cast<emp::opengl::utils::GlError>(error)
+                    << std::endl;
+        }
+
+        return first_error == GL_NO_ERROR;
+      }
+#define emp_checked_gl(GL_CALL)                                            \
+  ([&] {                                                                   \
+    auto result{GL_CALL};                                                  \
+    emp_assert(                                                            \
+      emp::opengl::utils::emp_get_gl_errors(__FILE__, __LINE__, #GL_CALL), \
+      "expected no errors in " #GL_CALL);                                  \
+    return result;                                                         \
   })()
-#define emp_checked_gl_void(GL_CALL)            \
-  ([&] {                                        \
-    GL_CALL;                                    \
-    auto error{glGetError()};                   \
-    emp_assert(error == GL_NO_ERROR, #GL_CALL); \
+#define emp_checked_gl_void(GL_CALL)                                       \
+  ([&] {                                                                   \
+    GL_CALL;                                                               \
+    emp_assert(                                                            \
+      emp::opengl::utils::emp_get_gl_errors(__FILE__, __LINE__, #GL_CALL), \
+      "expected no errors in " #GL_CALL);                                  \
   })()
 #else
 

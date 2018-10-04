@@ -214,9 +214,13 @@ namespace emp {
       private:
       std::vector<instance_attributes_type> draw_queue;
 
-      static constexpr auto DEFAULT_TRANSFORM =
-        [](auto &&v) -> std::decay_t<decltype(v)> {
-        return std::forward<decltype(v)>(v);
+      struct DefaultTransform {
+        constexpr DefaultTransform() {}
+
+        template <typename V>
+        constexpr auto operator()(V &&v) -> std::decay_t<decltype(v)> {
+          return std::forward<decltype(v)>(v);
+        }
       };
 
       public:
@@ -245,10 +249,9 @@ namespace emp {
         });
       }
 
-      template <typename I,
-                typename T = decltype(LineRenderer::DEFAULT_TRANSFORM)>
+      template <typename I, typename T = LineRenderer::DefaultTransform>
       void BeginBatch(const RenderSettings &settings, I begin, I end,
-                      const T &transform = LineRenderer::DEFAULT_TRANSFORM) {
+                      const T &transform = LineRenderer::DefaultTransform{}) {
         gpu_elements_buffer.Clear();
         gpu_vertex_buffer.Clear();
         if (begin == end) return;
@@ -287,7 +290,6 @@ namespace emp {
         // // Don't advance here. We will do that *after* we finish each loop
         // // iteration
         auto segment_end = begin;
-        int count = 0;
 
         while (segment_end != end) {
           auto start_attrs = transform(*segment_start);

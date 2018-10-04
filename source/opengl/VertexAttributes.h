@@ -40,6 +40,7 @@ namespace emp {
         case VertexAttributeType::Int:
           return out << "int";
         case VertexAttributeType::UnsignedInt:
+        default:
           return out << "unsigned int";
       }
     }
@@ -76,6 +77,7 @@ namespace emp {
         case FloatingVertexAttributeType::Float:
           return out << "float";
         case FloatingVertexAttributeType::Fixed:
+        default:
           return out << "fixed";
       }
     }

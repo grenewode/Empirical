@@ -273,10 +273,10 @@ namespace emp {
                             std::forward<Args>(args)...);
       }
 
-      const Uniform Uniform(const std::string& name) const {
+      const opengl::Uniform Uniform(const std::string& name) const {
         return GetUniformLocation(name);
       }
-      class Uniform Uniform(const std::string& name) {
+      class opengl::Uniform Uniform(const std::string& name) {
         return GetUniformLocation(name);
       }
     };

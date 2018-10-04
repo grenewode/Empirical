@@ -136,16 +136,14 @@ namespace emp {
 
       template <TextureBindTarget TARGET>
       class Texture {
+        protected:
         static GLuint bound;
+        GLuint name = 0;
 
         public:
         GLenum texture;
         static constexpr TextureBindTarget target{TARGET};
 
-        private:
-        GLuint name = 0;
-
-        public:
         explicit Texture(GLenum texture = GL_TEXTURE0) : texture(texture) {
           emp_checked_gl_void(glActiveTexture(texture));
 
@@ -162,7 +160,8 @@ namespace emp {
         Texture& operator=(const Texture&) = delete;
         Texture& operator=(Texture&& other) {
           if (this != &other) {
-            std::swap(name, other.name);
+            name = other.name;
+            other.name = 0;
             texture = other.texture;
           }
 
@@ -188,20 +187,20 @@ namespace emp {
         void Activate() { emp_checked_gl_void(glActiveTexture(texture)); }
 
         void Bind() {
+          emp_assert(name != bound, "the texture must not be already bound");
           Activate();
-          if (bound != name) {
-            emp_checked_gl_void(
-              glBindTexture(static_cast<GLenum>(target), name));
-          }
+          emp_checked_gl_void(glBindTexture(static_cast<GLenum>(target), name));
         }
 
         void SetDepthStencilTextureMode() {}
         void SetBaseMipmapLevel(GLint value = 0) {
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_BASE_LEVEL, value));
         }
 #ifndef __EMSCRIPTEN__
         void SetBorderColor(const Color& color) {
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameterfv(static_cast<GLenum>(target),
                                                GL_TEXTURE_BORDER_COLOR,
                                                color.RgbaPtr()));
@@ -215,55 +214,55 @@ namespace emp {
         void SetLODBias();
 
         void SetMinFilter(TextureMinFilter filter) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(
             glTexParameteri(static_cast<GLenum>(target), GL_TEXTURE_MIN_FILTER,
                             static_cast<decltype(GL_NEAREST)>(filter)));
         }
 
         void SetMagFilter(TextureMagFilter filter) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(
             glTexParameteri(static_cast<GLenum>(target), GL_TEXTURE_MAG_FILTER,
                             static_cast<decltype(GL_NEAREST)>(filter)));
         }
 
         void SetMinLOD(float value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameterf(static_cast<GLenum>(target),
                                               GL_TEXTURE_MIN_LOD, value));
         }
         void SetMaxLOD(float value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameterf(static_cast<GLenum>(target),
                                               GL_TEXTURE_MAX_LOD, value));
         }
         void SetMaxMipmapLevel(int value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_MAX_LEVEL, value));
         }
 
         void SetRedSwizzle(TextureSwizzle value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_SWIZZLE_R,
                                               static_cast<GLint>(value)));
         }
         void SetGreenSwizzle(TextureSwizzle value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_SWIZZLE_G,
                                               static_cast<GLint>(value)));
         }
         void SetBlueSwizzle(TextureSwizzle value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_SWIZZLE_B,
                                               static_cast<GLint>(value)));
         }
         void SetAlphaSwizzle(TextureSwizzle value) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_SWIZZLE_A,
                                               static_cast<GLint>(value)));
@@ -273,6 +272,7 @@ namespace emp {
                         TextureSwizzle green = TextureSwizzle::Green,
                         TextureSwizzle blue = TextureSwizzle::Blue,
                         TextureSwizzle alpha = TextureSwizzle::Alpha) {
+          emp_assert(name == bound, "the Texture must be bound");
 #ifdef __EMSCRIPTEN__
           SetRedSwizzle(red);
           SetGreenSwizzle(green);
@@ -282,21 +282,20 @@ namespace emp {
           GLint params[] = {static_cast<GLint>(red), static_cast<GLint>(green),
                             static_cast<GLint>(blue),
                             static_cast<GLint>(alpha)};
-          Bind();
           emp_checked_gl_void(glTexParameteriv(
             static_cast<GLenum>(target), GL_TEXTURE_SWIZZLE_RGBA, params));
 #endif
         }
 
         void SetTextureWrapS(TextureWrap wrap) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_WRAP_S,
                                               static_cast<GLint>(wrap)));
         }
 
         void SetTextureWrapT(TextureWrap wrap) {
-          Bind();
+          emp_assert(name == bound, "the Texture must be bound");
           emp_checked_gl_void(glTexParameteri(static_cast<GLenum>(target),
                                               GL_TEXTURE_WRAP_T,
                                               static_cast<GLint>(wrap)));
@@ -318,7 +317,8 @@ namespace emp {
         void Data(GLint mipmap_level, Texture2DFormat internal_format,
                   GLsizei width, GLsizei height, Texture2DFormat format,
                   TextureType type, std::nullptr_t) {
-          Texture<TARGET>::Bind();
+          emp_assert(Texture<TARGET>::name == Texture<TARGET>::bound,
+                     "the Texture must be bound");
           emp_checked_gl_void(glTexImage2D(
             static_cast<GLenum>(target), mipmap_level,
             static_cast<GLint>(internal_format), width, height, 0,
@@ -329,7 +329,8 @@ namespace emp {
         void Data(GLint mipmap_level, Texture2DFormat internal_format,
                   GLsizei width, GLsizei height, Texture2DFormat format,
                   TextureType type, T&& data) {
-          Texture<TARGET>::Bind();
+          emp_assert(Texture<TARGET>::name == Texture<TARGET>::bound,
+                     "the Texture must be bound");
           emp_checked_gl_void(glTexImage2D(
             static_cast<GLenum>(target), mipmap_level,
             static_cast<GLint>(internal_format), width, height, 0,
@@ -341,7 +342,6 @@ namespace emp {
                   GLsizei width, GLsizei height, Texture2DFormat format,
                   T&& data) {
           using value_type = std::decay_t<decltype(*std::begin(data))>;
-          Texture<TARGET>::Bind();
           Data(mipmap_level, internal_format, width, height, format,
                TextureTypeOf<value_type>(), data);
         }
@@ -390,7 +390,8 @@ namespace emp {
         void SubData(GLint mipmap_level, GLint xoffset, GLint yoffset,
                      GLsizei width, GLsizei height, Texture2DFormat format,
                      TextureType type, T&& data) {
-          Texture<TARGET>::Bind();
+          emp_assert(Texture<TARGET>::name == Texture<TARGET>::bound,
+                     "the Texture must be bound");
           emp_checked_gl_void(
             glTexSubImage2D(static_cast<GLenum>(target), mipmap_level, xoffset,
                             yoffset, width, height, static_cast<GLint>(format),

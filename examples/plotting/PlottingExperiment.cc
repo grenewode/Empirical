@@ -260,13 +260,14 @@ int main(int argc, char *argv[]) {
     return font;
   });
 
-  auto camera = std::make_shared<emp::scenegraph::OrthoCamera>(
-    canvas.GetRegion().AddDimension(-100, 100));
+  auto region = canvas.GetRegion().AddDimension(-100, 100);
+
+  auto camera = std::make_shared<emp::scenegraph::OrthoCamera>(region);
   auto eye = std::make_shared<emp::scenegraph::SimpleEye>();
 
   emp::graphics::Graphics g(canvas, "Roboto", camera, eye);
   canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
-    camera->SetViewbox(canvas.GetRegion().AddDimension(-100, 100));
+    // camera->SetViewbox(canvas.GetRegion().AddDimension(-100, 100));
   });
 
   struct pt_type {
@@ -275,11 +276,33 @@ int main(int argc, char *argv[]) {
 
   std::vector<pt_type> pts;
 
+  emp::opengl::Framebuffer fb;
+  fb.Bind();
+  emp::opengl::Texture2d tex;
+
+  tex.Bind();
+  tex.Data(0, emp::opengl::Texture2DFormat::RGBA, region.extents().x(),
+           region.extents().y(), emp::opengl::Texture2DFormat::RGBA,
+           emp::opengl::TextureType::UnsignedByte, nullptr);
+
+  tex.SetMinFilter(emp::opengl::TextureMinFilter::Linear);
+  tex.SetMagFilter(emp::opengl::TextureMagFilter::Linear);
+  fb.Attach(tex);
+
+  emp::opengl::Renderbuffer rb(
+    emp::opengl::RenderbufferFormat::Depth24Stencil8);
+  rb.Bind();
+  rb.Store(region.extents().x(), region.extents().y());
+  fb.Attach(rb, emp::opengl::FramebufferAttachment::DepthStencil);
+
+  std::cout << fb.IsComplete() << std::endl;
+
+  // fb.Unbind();
+
   canvas.runForever([&](auto &&) {
     g.Clear(emp::opengl::Color::grey(0.8));
 
     auto region = canvas.GetRegion();
-
     auto p = cppplot(attributes::X = &pt_type::x, attributes::Y = &pt_type::y,
                      attributes::Color = Color::red(), attributes::Size = 1) +
              LinearScale<struct attributes::X>{region.min.x(), region.max.x()} +
@@ -290,7 +313,7 @@ int main(int argc, char *argv[]) {
     p(g, std::begin(pts), std::end(pts));
 
     pts.clear();
-    for (int i = 0; i < 100000; ++i)
+    for (int i = 0; i < 1000; ++i)
       pts.push_back({static_cast<float>(rand()), static_cast<float>(rand())});
   });
 }
