@@ -6,32 +6,31 @@
 
 #include "math/LinAlg.h"
 #include "math/region.h"
+#include "scenegraph/rendering.h"
 
 namespace emp {
   namespace scenegraph {
-    class Camera {
-      public:
-      virtual ~Camera() {}
-      virtual math::Mat4x4f GetProjection() const = 0;
-    };
 
-    class OrthoCamera : public Camera {
+    class OrthoCamera : public graphics::Camera {
       private:
-      math::Region3f viewbox;
+      float zMin, zMax;
+
+      float width, height;
 
       public:
-      OrthoCamera(const math::Region3f &viewbox) : viewbox(viewbox) {}
+      OrthoCamera(float zMin, float zMax) : zMin(zMin), zMax(zMax) {}
 
-      void SetViewbox(const math::Region3f &viewbox) {
-        this->viewbox = viewbox;
+      void OnResize(int width, int height) override {
+        this->width = width;
+        this->height = height;
       }
 
       math::Mat4x4f GetProjection() const override {
-        return math::proj::ortho(viewbox.min, viewbox.max);
+        return math::proj::ortho({0, 0, zMin}, {width, height, zMax});
       }
     };
 
-    class PerspectiveCamera : public Camera {
+    class PerspectiveCamera : public graphics::Camera {
       private:
       float fov;
       float aspect;
@@ -47,13 +46,7 @@ namespace emp {
       }
     };
 
-    class Eye {
-      public:
-      virtual ~Eye() {}
-      virtual math::Mat4x4f CalculateView() const = 0;
-    };
-
-    class SimpleEye : public Eye {
+    class SimpleEye : public graphics::Eye {
       math::Mat4x4f view;
 
       public:

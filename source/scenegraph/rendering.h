@@ -4,10 +4,8 @@
 #include "math/consts.h"
 #include "math/region.h"
 #include "opengl/color.h"
-#include "opengl/glcanvas.h"
 #include "opengl/glwrap.h"
 #include "opengl/shaders.h"
-#include "scenegraph/camera.h"
 #include "scenegraph/freetype.h"
 #include "tools/attrs.h"
 #include "tools/resources.h"
@@ -17,9 +15,163 @@
 
 namespace emp {
   namespace graphics {
-    struct RenderSettings {
-      math::Mat4x4f projection;
-      math::Mat4x4f view;
+
+    class RenderTarget {
+      private:
+      static RenderTarget *current_render_target;
+
+      protected:
+      virtual void OnEnable() = 0;
+      void DoResized();
+
+      public:
+      virtual ~RenderTarget() {}
+      virtual int GetWidth() const = 0;
+      virtual int GetHeight() const = 0;
+
+      void Enable();
+
+      static const RenderTarget &GetCurrentRenderTarget() {
+        return *current_render_target;
+      }
+
+      static bool HasCurrentRenderTarget() {
+        return current_render_target != nullptr;
+      }
+    };
+    RenderTarget *RenderTarget::current_render_target = nullptr;
+
+    class Camera {
+      static Camera *current_camera;
+
+      public:
+      virtual ~Camera() {}
+      virtual void OnResize(int width, int height) {}
+      virtual math::Mat4x4f GetProjection() const = 0;
+
+      void Enable() {
+        current_camera = this;
+        if (RenderTarget::HasCurrentRenderTarget()) {
+          OnResize(RenderTarget::GetCurrentRenderTarget().GetWidth(),
+                   RenderTarget::GetCurrentRenderTarget().GetHeight());
+        }
+      }
+
+      static bool HasCurrentCamera() { return current_camera != nullptr; }
+      static const Camera &GetCurrentCamera() { return *current_camera; }
+
+      friend RenderTarget;
+    };
+    Camera *Camera::current_camera = nullptr;
+
+    class Eye {
+      private:
+      static Eye *current_eye;
+
+      public:
+      virtual ~Eye() {}
+      virtual void OnResize(int width, int height) {}
+      virtual math::Mat4x4f CalculateView() const = 0;
+
+      void Enable() {
+        current_eye = this;
+        if (RenderTarget::HasCurrentRenderTarget()) {
+          OnResize(RenderTarget::GetCurrentRenderTarget().GetWidth(),
+                   RenderTarget::GetCurrentRenderTarget().GetHeight());
+        }
+      }
+
+      static bool HasCurrentEye() { return current_eye != nullptr; }
+      static const Eye &GetCurrentEye() { return *current_eye; }
+      friend RenderTarget;
+    };
+    Eye *Eye::current_eye = nullptr;
+
+    void RenderTarget::Enable() {
+      emp_checked_gl_void(glViewport(0, 0, GetWidth(), GetHeight()));
+
+      glEnable(GL_BLEND);
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+#ifdef __EMSCRIPTEN__
+      glEnable(GL_MULTISAMPLE);
+#endif
+
+      RenderTarget::current_render_target = this;
+      OnEnable();
+      if (Camera::HasCurrentCamera()) {
+        Camera::current_camera->OnResize(GetWidth(), GetHeight());
+      }
+      if (Eye::HasCurrentEye()) {
+        Eye::current_eye->OnResize(GetWidth(), GetHeight());
+      }
+    }
+
+    void RenderTarget::DoResized() {
+      emp_checked_gl_void(glViewport(0, 0, GetWidth(), GetHeight()));
+      if (Camera::HasCurrentCamera()) {
+        Camera::current_camera->OnResize(GetWidth(), GetHeight());
+      }
+      if (Eye::HasCurrentEye()) {
+        Eye::current_eye->OnResize(GetWidth(), GetHeight());
+      }
+    }
+
+    class FramebufferRenderTarget : public RenderTarget {
+      private:
+      int width, height;
+      emp::opengl::Framebuffer framebuffer;
+      emp::opengl::Texture2d color_texture;
+      emp::opengl::Renderbuffer depth_stencil_buffer;
+
+      public:
+      FramebufferRenderTarget(int width, int height)
+        : width(width),
+          height(height),
+          framebuffer{},
+          color_texture{},
+          depth_stencil_buffer{
+            emp::opengl::RenderbufferFormat::Depth24Stencil8} {
+        Setup();
+      }
+
+      bool Setup(int width, int height) {
+        this->width = width;
+        this->height = height;
+        return Setup();
+      }
+
+      bool Setup() {
+        framebuffer.Bind();
+
+        color_texture.Bind();
+        color_texture.Data(0, emp::opengl::Texture2DFormat::RGBA, width, height,
+                           emp::opengl::Texture2DFormat::RGBA,
+                           emp::opengl::TextureType::UnsignedByte, nullptr);
+
+        color_texture.SetMinFilter(emp::opengl::TextureMinFilter::Linear);
+        color_texture.SetMagFilter(emp::opengl::TextureMagFilter::Linear);
+        framebuffer.Attach(color_texture);
+
+        depth_stencil_buffer.Bind();
+        depth_stencil_buffer.Store(width, height);
+        framebuffer.Attach(depth_stencil_buffer,
+                           emp::opengl::FramebufferAttachment::DepthStencil);
+
+        return framebuffer.IsComplete();
+      }
+
+      int GetWidth() const override { return width; }
+      int GetHeight() const override { return height; }
+
+      bool IsComplete() const { return framebuffer.IsComplete(); }
+
+      const emp::opengl::Texture2d &GetColorTexture() const {
+        return color_texture;
+      }
+
+      protected:
+      void OnEnable() override { framebuffer.Bind(); }
     };
 
     enum class TextDirections { Horizontal, Vertical };
@@ -104,13 +256,8 @@ namespace emp {
 
       public:
       template <typename S = const char *>
-      FillRenderer(opengl::GLCanvas &canvas,
-                   S &&fill_shader = "DefaultSolidColor")
-        : fill_shader(std::forward<S>(fill_shader)),
-          vao(canvas.MakeVAO()),
-          gpu_vertex_buffer(canvas.makeBuffer<opengl::BufferType::Array>()),
-          gpu_elements_buffer(
-            canvas.makeBuffer<opengl::BufferType::ElementArray>()) {
+      FillRenderer(S &&fill_shader = "DefaultSolidColor")
+        : fill_shader(std::forward<S>(fill_shader)) {
         this->fill_shader.OnSet([this](auto &) {
           fill_shader_uniforms.model = this->fill_shader->Uniform("model");
           fill_shader_uniforms.view = this->fill_shader->Uniform("view");
@@ -125,9 +272,7 @@ namespace emp {
         });
       }
 
-      void BeginBatch(const RenderSettings &settings, const Mesh &mesh) {
-        auto first = 0;
-
+      void BeginBatch(const Mesh &mesh) {
         gpu_elements_buffer.Clear();
         gpu_vertex_buffer.Clear();
 
@@ -146,8 +291,9 @@ namespace emp {
         gpu_elements_buffer.SendToGPU();
 
         fill_shader->Use();
-        fill_shader_uniforms.projection = settings.projection;
-        fill_shader_uniforms.view = settings.view;
+        fill_shader_uniforms.projection =
+          Camera::GetCurrentCamera().GetProjection();
+        fill_shader_uniforms.view = Eye::GetCurrentEye().CalculateView();
       }
 
       template <typename I = instance_attributes_type>
@@ -225,13 +371,8 @@ namespace emp {
 
       public:
       template <typename S = const char *>
-      LineRenderer(opengl::GLCanvas &canvas,
-                   S &&fill_shader = "DefaultVaryingColor")
-        : fill_shader(std::forward<S>(fill_shader)),
-          vao(canvas.MakeVAO()),
-          gpu_vertex_buffer(canvas.makeBuffer<opengl::BufferType::Array>()),
-          gpu_elements_buffer(
-            canvas.makeBuffer<opengl::BufferType::ElementArray>()) {
+      LineRenderer(S &&fill_shader = "DefaultVaryingColor")
+        : fill_shader(std::forward<S>(fill_shader)) {
         this->fill_shader.OnSet([this](auto &) {
           fill_shader_uniforms.model = this->fill_shader->Uniform("model");
           fill_shader_uniforms.view = this->fill_shader->Uniform("view");
@@ -250,7 +391,7 @@ namespace emp {
       }
 
       template <typename I, typename T = LineRenderer::DefaultTransform>
-      void BeginBatch(const RenderSettings &settings, I begin, I end,
+      void BeginBatch(I begin, I end,
                       const T &transform = LineRenderer::DefaultTransform{}) {
         gpu_elements_buffer.Clear();
         gpu_vertex_buffer.Clear();
@@ -461,8 +602,9 @@ namespace emp {
         gpu_elements_buffer.SendToGPU();
 
         fill_shader->Use();
-        fill_shader_uniforms.projection = settings.projection;
-        fill_shader_uniforms.view = settings.view;
+        fill_shader_uniforms.projection =
+          Camera::GetCurrentCamera().GetProjection();
+        fill_shader_uniforms.view = Eye::GetCurrentEye().CalculateView();
       }
 
       template <typename I = instance_attributes_type>
@@ -494,7 +636,7 @@ namespace emp {
         }
         draw_queue.clear();
       }
-    };  // namespace graphics
+    };
 
     class TextRenderer {
       struct data_t {
@@ -521,12 +663,8 @@ namespace emp {
                      TextValue<std::string>, TextSizeValue<float>>;
 
       template <typename F, typename S = std::string>
-      TextRenderer(opengl::GLCanvas &canvas, F &&font,
-                   S &&shader = "DefaultFont")
-        : vao(canvas.MakeVAO()),
-          vertices_buffer(canvas.makeBuffer<opengl::BufferType::Array>()),
-          font(std::forward<F>(font)),
-          shader(std::forward<S>(shader)) {
+      TextRenderer(F &&font, S &&shader = "DefaultFont")
+        : font(std::forward<F>(font)), shader(std::forward<S>(shader)) {
         using namespace emp::opengl;
         using namespace emp::math;
 
@@ -544,10 +682,10 @@ namespace emp {
         });
       }
 
-      void BeginBatch(const RenderSettings &settings) {
+      void BeginBatch() {
         this->shader->Use();
-        shader_uniforms.projection = settings.projection;
-        shader_uniforms.view = settings.view;
+        shader_uniforms.projection = Camera::GetCurrentCamera().GetProjection();
+        shader_uniforms.view = Eye::GetCurrentEye().CalculateView();
       }
 
       emp::math::Vec2f Measure(
@@ -592,7 +730,6 @@ namespace emp {
 
         float scale = TextSize::Get(attrs) / font->atlas_height;
 
-        int i = 0;
         for (auto &c : attrs.GetText()) {
           auto info = font->Lookup(c);
           auto lcursor = cursor;
@@ -643,6 +780,92 @@ namespace emp {
       void FinishBatch() {}
     };
 
+    class TextureRenderer {
+      struct data_t {
+        math::Vec3f position;
+        math::Vec2f texture_coordinates;
+      };
+
+      opengl::VertexArrayObject vao;
+      opengl::BufferVector<opengl::BufferType::Array, data_t> vertices_buffer;
+      ResourceRef<opengl::ShaderProgram> shader;
+
+      struct {
+        opengl::Uniform model;
+        opengl::Uniform view;
+        opengl::Uniform projection;
+        opengl::Uniform tex;
+      } shader_uniforms;
+
+      public:
+      using instance_attributes_type =
+        tools::Attrs<TransformValue<math::Mat4x4f>>;
+
+      private:
+      std::vector<instance_attributes_type> draw_queue;
+
+      public:
+      template <typename S = std::string>
+      TextureRenderer(S &&shader = "DefaultTextured")
+        : shader(std::forward<S>(shader)) {
+        using namespace emp::opengl;
+        using namespace emp::math;
+
+        this->shader.OnSet([this](auto &value) {
+          shader_uniforms.model = this->shader->Uniform("model");
+          shader_uniforms.view = this->shader->Uniform("view");
+          shader_uniforms.projection = this->shader->Uniform("projection");
+          shader_uniforms.tex = this->shader->Uniform("tex");
+
+          vao.bind();
+          vertices_buffer.bind();
+          vao.attr(this->shader->Attribute("position", &data_t::position));
+          vao.attr(this->shader->Attribute("uv", &data_t::texture_coordinates));
+        });
+      }
+
+      void BeginBatch(const emp::opengl::Texture2d &texture, float width,
+                      float height) {
+        this->shader->Use();
+        shader_uniforms.projection = Camera::GetCurrentCamera().GetProjection();
+        shader_uniforms.view = Eye::GetCurrentEye().CalculateView();
+        shader_uniforms.tex = texture;
+
+        vertices_buffer.PushData({{0, 0, 0}, {0, 1}});
+        vertices_buffer.PushData({{width, 0, 0}, {1, 1}});
+
+        vertices_buffer.PushData({{0, height, 0}, {0, 0}});
+        vertices_buffer.PushData({{width, 0, 0}, {1, 1}});
+
+        vertices_buffer.PushData({{0, height, 0}, {0, 0}});
+        vertices_buffer.PushData({{height, width, 0}, {1, 0}});
+
+        vertices_buffer.SendToGPU();
+
+        draw_queue.clear();
+      }
+
+      void BeginBatch(const emp::opengl::Texture2d &texture) {
+        BeginBatch(texture, texture.GetWidth(), texture.GetHeight());
+      }
+
+      void Instance(const instance_attributes_type &attrs) {
+        draw_queue.push_back(attrs);
+      }
+
+      void FinishBatch() {
+        shader->Use();
+        vao.bind();
+
+        for (auto &attrs : draw_queue) {
+          shader_uniforms.model = attrs.GetTransform();
+
+          vertices_buffer.Draw(GL_TRIANGLES);
+        }
+        draw_queue.clear();
+      }
+    };
+
     template <typename R>
     class Pen {
       private:
@@ -652,9 +875,8 @@ namespace emp {
       using instance_attributes_type = typename R::instance_attributes_type;
 
       template <typename... T>
-      Pen(R *renderer, const RenderSettings &settings, T &&... args)
-        : renderer(renderer) {
-        renderer->BeginBatch(settings, std::forward<T>(args)...);
+      Pen(R *renderer, T &&... args) : renderer(renderer) {
+        renderer->BeginBatch(std::forward<T>(args)...);
       }
 
       template <typename I, typename... U>
@@ -685,21 +907,16 @@ namespace emp {
     class Graphics {
       FillRenderer fill_renderer;
       LineRenderer line_renderer;
+      TextureRenderer texture_renderer;
       TextRenderer text_renderer;
 
       public:
-      std::shared_ptr<scenegraph::Camera> camera;
-      std::shared_ptr<scenegraph::Eye> eye;
-
       template <typename F>
-      Graphics(opengl::GLCanvas &canvas, F &&font,
-               std::shared_ptr<scenegraph::Camera> camera,
-               std::shared_ptr<scenegraph::Eye> eye)
-        : fill_renderer(canvas),
-          line_renderer(canvas),
-          text_renderer(canvas, std::forward<F>(font)),
-          camera(camera),
-          eye(eye) {}
+      Graphics(F &&font)
+        : fill_renderer{},
+          line_renderer{},
+          texture_renderer{},
+          text_renderer{std::forward<F>(font)} {}
 
       Graphics(const Graphics &) = delete;
       Graphics(Graphics &&) = delete;
@@ -721,16 +938,17 @@ namespace emp {
       }
 
       Pen<FillRenderer> Fill(const Mesh &mesh) {
-        return {&fill_renderer,
-                {camera->GetProjection(), eye->CalculateView()},
-                mesh};
+        return {&fill_renderer, mesh};
       }
 
       template <typename... Args>
       Pen<LineRenderer> Line(Args &&... args) {
-        return {&line_renderer,
-                {camera->GetProjection(), eye->CalculateView()},
-                std::forward<Args>(args)...};
+        return {&line_renderer, std::forward<Args>(args)...};
+      }
+
+      template <typename... Args>
+      Pen<TextureRenderer> Texture(Args &&... args) {
+        return {&texture_renderer, std::forward<Args>(args)...};
       }
 
       template <typename A0 = typename FillRenderer::instance_attributes_type,
@@ -741,10 +959,7 @@ namespace emp {
           .Flush();
       }
 
-      Pen<TextRenderer> Text() {
-        return {&text_renderer,
-                {camera->GetProjection(), eye->CalculateView()}};
-      }
+      Pen<TextRenderer> Text() { return {&text_renderer}; }
     };
   }  // namespace graphics
 }  // namespace emp

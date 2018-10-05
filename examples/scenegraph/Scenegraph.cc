@@ -32,7 +32,7 @@ int main(int argc, char* argv[]) {
   using namespace emp::scenegraph::shapes;
 
   GLCanvas canvas;
-  shaders::LoadShaders(canvas);
+  shaders::LoadShaders();
 
   emp::Resources<FontFace>::Add("Roboto", [] {
     auto font = ft.load("Assets/RobotoMono-Regular.ttf");

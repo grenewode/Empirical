@@ -148,8 +148,6 @@ namespace emp {
           emp_checked_gl_void(glActiveTexture(texture));
 
           emp_checked_gl_void(glGenTextures(1, &name));
-
-          Bind();
         }
 
         Texture(const Texture&) = delete;
@@ -190,6 +188,7 @@ namespace emp {
           emp_assert(name != bound, "the texture must not be already bound");
           Activate();
           emp_checked_gl_void(glBindTexture(static_cast<GLenum>(target), name));
+          bound = name;
         }
 
         void SetDepthStencilTextureMode() {}
@@ -309,6 +308,10 @@ namespace emp {
 
       template <TextureBindTarget TARGET>
       class Texture2d : public Texture<TARGET> {
+        private:
+        GLsizei width = 0;
+        GLsizei height = 0;
+
         public:
         using Texture<TARGET>::target;
         using Texture<TARGET>::Texture;
@@ -319,6 +322,8 @@ namespace emp {
                   TextureType type, std::nullptr_t) {
           emp_assert(Texture<TARGET>::name == Texture<TARGET>::bound,
                      "the Texture must be bound");
+          this->width = width;
+          this->height = height;
           emp_checked_gl_void(glTexImage2D(
             static_cast<GLenum>(target), mipmap_level,
             static_cast<GLint>(internal_format), width, height, 0,
@@ -331,6 +336,8 @@ namespace emp {
                   TextureType type, T&& data) {
           emp_assert(Texture<TARGET>::name == Texture<TARGET>::bound,
                      "the Texture must be bound");
+          this->width = width;
+          this->height = height;
           emp_checked_gl_void(glTexImage2D(
             static_cast<GLenum>(target), mipmap_level,
             static_cast<GLint>(internal_format), width, height, 0,
@@ -392,6 +399,11 @@ namespace emp {
                      TextureType type, T&& data) {
           emp_assert(Texture<TARGET>::name == Texture<TARGET>::bound,
                      "the Texture must be bound");
+
+          emp_assert((xoffset + width) <= this->width &&
+                       (yoffset + height) <= this.height,
+                     "SubData is too large for this texture");
+
           emp_checked_gl_void(
             glTexSubImage2D(static_cast<GLenum>(target), mipmap_level, xoffset,
                             yoffset, width, height, static_cast<GLint>(format),
@@ -406,12 +418,23 @@ namespace emp {
           SubData(mipmap_level, xoffset, yoffset, width, height, format,
                   TextureTypeOf<value_type>(), std::forward<T>(data));
         }
+        template <typename T>
+        void SubData(GLint mipmap_level, Texture2DFormat format, T&& data) {
+          using value_type = std::decay_t<decltype(data[0])>;
+          SubData(mipmap_level, 0, 0, width, height, format,
+                  TextureTypeOf<value_type>(), std::forward<T>(data));
+        }
 
         template <typename T>
         void SubData(GLint xoffset, GLint yoffset, GLsizei width,
                      GLsizei height, Texture2DFormat format, T&& data) {
           SubData(0, xoffset, yoffset, width, height, format,
                   std::forward<T>(data));
+        }
+
+        template <typename T>
+        void SubData(Texture2DFormat format, T&& data) {
+          SubData(0, 0, 0, width, height, format, std::forward<T>(data));
         }
 
         template <typename T>
@@ -423,11 +446,22 @@ namespace emp {
         }
 
         template <typename T>
+        void SubData(Texture2DFormat format, TextureType type, T&& data) {
+          SubData(0, 0, 0, width, height, format, type, std::forward<T>(data));
+        }
+
+        template <typename T>
         void SubData(GLint xoffset, GLint yoffset, GLsizei width,
                      GLsizei height, T&& data) {
           using value_type = std::decay_t<decltype(*std::begin(data))>;
           SubData(0, xoffset, yoffset, width, height,
                   Texture2DFormatOf<value_type>(), data);
+        }
+        template <typename T>
+        void SubData(T&& data) {
+          using value_type = std::decay_t<decltype(*std::begin(data))>;
+          SubData(0, 0, 0, width, height, Texture2DFormatOf<value_type>(),
+                  data);
         }
 
         template <typename T>
@@ -438,11 +472,21 @@ namespace emp {
                   Texture2DFormatOf<value_type>(), data);
         }
 
+        template <typename T>
+        void SubData(GLint mipmap_level, T&& data) {
+          using value_type = std::decay_t<decltype(*std::begin(data))>;
+          SubData(mipmap_level, 0, 0, width, height,
+                  Texture2DFormatOf<value_type>(), data);
+        }
+
         void SetTextureWrap(TextureWrap s, TextureWrap t) {
           Texture<TARGET>::SetTextureWrapS(s);
           Texture<TARGET>::SetTextureWrapT(t);
         }
+        auto GetWidth() const { return width; }
+        auto GetHeight() const { return height; }
       };
+
     };  // namespace __impl_emp_opengl_texture_base
 
     template <TextureBindTarget>

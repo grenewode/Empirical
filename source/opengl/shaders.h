@@ -51,7 +51,7 @@ namespace emp {
       public:
       Shader(GLuint handle) : handle(handle) {}
       Shader(const char* source, ShaderType type)
-        : handle(glCreateShader(static_cast<GLenum>(type))) {
+        : handle(emp_checked_gl(glCreateShader(static_cast<GLenum>(type)))) {
         glShaderSource(handle, 1, &source, nullptr);
         glCompileShader(handle);
 

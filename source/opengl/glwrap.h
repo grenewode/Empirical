@@ -110,7 +110,9 @@ namespace emp {
       GLuint handle = 0;
 
       public:
-      BufferObject(GLuint handle) : handle(handle) {}
+      BufferObject() { emp_checked_gl_void(glGenBuffers(1, &handle)); }
+
+      explicit BufferObject(GLuint handle) : handle(handle) {}
 
       BufferObject(const BufferObject&) = delete;
       BufferObject(BufferObject&& other) noexcept : handle(other.handle) {
@@ -198,10 +200,10 @@ namespace emp {
 
       BufferObject& bind() {
         emp_assert(handle != 0, "the BufferObject must have been created");
-        emp_assert(handle != emp__impl_BufferObject_bound_buffer::bound_buffer,
-                   "the BufferObject must not be bound");
-        emp_checked_gl_void(glBindBuffer(static_cast<GLenum>(TYPE), handle));
-        emp__impl_BufferObject_bound_buffer::bound_buffer = handle;
+        if (emp__impl_BufferObject_bound_buffer::bound_buffer != handle) {
+          emp_checked_gl_void(glBindBuffer(static_cast<GLenum>(TYPE), handle));
+          emp__impl_BufferObject_bound_buffer::bound_buffer = handle;
+        }
 
         return *this;
       }
@@ -230,6 +232,8 @@ namespace emp {
         size_t gpu_buffer_capacity = 0;
 
         public:
+        using BufferObject<TYPE>::BufferObject;
+
         BufferVector(const BufferObject<TYPE>& buffer)
           : BufferObject<TYPE>(buffer) {}
         BufferVector(BufferObject<TYPE>&& buffer)
@@ -297,6 +301,7 @@ namespace emp {
         const T& operator[](size_t i) const { return data[i]; }
 
         void SendToGPU(BufferUsage usage = BufferUsage::DynamicDraw) {
+          BufferObject<TYPE>::bind();
           if (data.size() > gpu_buffer_capacity) {
             BufferObject<TYPE>::init(data, usage);
             gpu_buffer_capacity = data.size();
@@ -607,6 +612,11 @@ namespace emp {
       void Unbind() {
         emp_assert(handle == bound_framebuffer,
                    "the framebuffer must be bound");
+        bound_framebuffer = 0;
+        emp_checked_gl_void(glBindFramebuffer(GL_FRAMEBUFFER, 0));
+      }
+
+      static void BindDefault() {
         bound_framebuffer = 0;
         emp_checked_gl_void(glBindFramebuffer(GL_FRAMEBUFFER, 0));
       }

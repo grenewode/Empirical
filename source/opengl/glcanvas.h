@@ -3,6 +3,7 @@
 
 #include "glwrap.h"
 #include "math/region.h"
+#include "scenegraph/rendering.h"
 #include "shaders.h"
 
 #ifdef __EMSCRIPTEN__
@@ -250,7 +251,7 @@ namespace emp {
   public:                    \
   EventHandle<sig> on_##name##_event{&name##_event};
 
-    class GLCanvas {
+    class GLCanvas : public emp::graphics::RenderTarget {
       ADD_EVENT(mouse, void(GLCanvas &, const MouseEvent &))
       ADD_EVENT(resize, void(GLCanvas &, int, int))
 
@@ -267,7 +268,6 @@ namespace emp {
 #endif
 
       void resizeViewport(float width, float height) {
-        glViewport(0, 0, width, height);
         region.min = {0, 0};
         region.max = {width, height};
 
@@ -281,6 +281,8 @@ namespace emp {
           },
           id.c_str(), width, height);
 #endif
+
+        DoResized();
       }
 
       public:
@@ -470,8 +472,8 @@ namespace emp {
       template <typename R>
       void runForever(R &&onUpdate, int fps = -1, bool forever = true) {
         makeCurrent();
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        Enable();
+
 #ifdef __EMSCRIPTEN__
         auto args = std::make_tuple(std::forward<R>(onUpdate), this);
         emscripten_set_main_loop_arg(
@@ -482,7 +484,6 @@ namespace emp {
           &args, fps, forever);
 #else
         if (fps <= 0) fps = 60;
-        glEnable(GL_MULTISAMPLE);
         auto frameStart = std::chrono::system_clock::now();
 
         while (!glfwWindowShouldClose(window)) {
@@ -509,23 +510,13 @@ namespace emp {
 #endif
       }
 
-      VertexArrayObject MakeVAO() { return VertexArrayObject(); }
-      template <typename... Args>
-      ShaderProgram makeShaderProgram(Args &&... args) const {
-        return {std::forward<Args>(args)...};
-      }
-
-      template <BufferType TYPE>
-      BufferObject<TYPE> makeBuffer() {
-        GLuint handle;
-        emp_checked_gl_void(glGenBuffers(1, &handle));
-        return BufferObject<TYPE>(handle);
-      }
-
-      auto GetWidth() const { return width; }
-      auto GetHeight() const { return height; }
+      int GetWidth() const override { return width; }
+      int GetHeight() const override { return height; }
 
       auto GetRegion() const { return region; }
+
+      protected:
+      void OnEnable() override { emp::opengl::Framebuffer::BindDefault(); }
     };
 
   }  // namespace opengl

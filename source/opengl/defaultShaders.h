@@ -3,7 +3,7 @@
 
 #include "../tools/resources.h"
 #include "color.h"
-#include "glcanvas.h"
+#include "shaders.h"
 
 namespace emp {
   namespace opengl {
@@ -113,7 +113,7 @@ namespace emp {
 
           void main()
           {
-              gl_FragColor = mix(texture2D(tex, f_uv), vec4(1, 1, 1, 1), 0.5);
+              gl_FragColor = texture2D(tex, f_uv);
           }
         )glsl";
 #else
@@ -127,7 +127,7 @@ namespace emp {
 
           void main()
           {
-            color = mix(texture(tex, f_uv), vec4(0, 0, 0, 1), 0.1);
+            color = texture(tex, f_uv);
           }
         )glsl";
 #endif
@@ -205,24 +205,24 @@ namespace emp {
         )glsl";
 #endif
 
-      void LoadShaders(GLCanvas& canvas) {
-        Resources<ShaderProgram>::Add("DefaultVaryingColor", [&canvas] {
-          return canvas.makeShaderProgram(DEFAULT_VARYING_SHADER_VERTEX_SRC,
-                                          DEFAULT_SIMPLE_SHADER_FRAGMENT_SRC);
+      void LoadShaders() {
+        Resources<ShaderProgram>::Add("DefaultVaryingColor", [] {
+          return ShaderProgram{DEFAULT_VARYING_SHADER_VERTEX_SRC,
+                               DEFAULT_SIMPLE_SHADER_FRAGMENT_SRC};
         });
 
-        Resources<ShaderProgram>::Add("DefaultSolidColor", [&canvas] {
-          return canvas.makeShaderProgram(DEFAULT_SOLID_SHADER_VERTEX_SRC,
-                                          DEFAULT_SIMPLE_SHADER_FRAGMENT_SRC);
+        Resources<ShaderProgram>::Add("DefaultSolidColor", [] {
+          return ShaderProgram(DEFAULT_SOLID_SHADER_VERTEX_SRC,
+                               DEFAULT_SIMPLE_SHADER_FRAGMENT_SRC);
         });
 
-        Resources<ShaderProgram>::Add("DefaultTextured", [&canvas] {
-          return canvas.makeShaderProgram(DEFAULT_TEXTURE_SHADER_VERTEX_SRC,
-                                          DEFAULT_TEXTURE_SHADER_FRAGMENT_SRC);
+        Resources<ShaderProgram>::Add("DefaultTextured", [] {
+          return ShaderProgram(DEFAULT_TEXTURE_SHADER_VERTEX_SRC,
+                               DEFAULT_TEXTURE_SHADER_FRAGMENT_SRC);
         });
-        Resources<ShaderProgram>::Add("DefaultFont", [&canvas] {
-          return canvas.makeShaderProgram(DEFAULT_FONT_SHADER_VERTEX_SRC,
-                                          DEFAULT_FONT_SHADER_FRAGMENT_SRC);
+        Resources<ShaderProgram>::Add("DefaultFont", [] {
+          return ShaderProgram(DEFAULT_FONT_SHADER_VERTEX_SRC,
+                               DEFAULT_FONT_SHADER_FRAGMENT_SRC);
         });
       }
 

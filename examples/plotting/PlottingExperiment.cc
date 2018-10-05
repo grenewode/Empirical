@@ -252,7 +252,7 @@ int main(int argc, char *argv[]) {
   using namespace emp::opengl;
 
   emp::opengl::GLCanvas canvas(800, 800);
-  emp::opengl::shaders::LoadShaders(canvas);
+  emp::opengl::shaders::LoadShaders();
   emp::Resources<emp::scenegraph::FontFace>::Add("Roboto", [] {
     auto font = ft.load("Assets/RobotoMono-Regular.ttf");
     font.SetFreeTypePixelSize(0, 64);
@@ -260,12 +260,12 @@ int main(int argc, char *argv[]) {
     return font;
   });
 
-  auto region = canvas.GetRegion().AddDimension(-100, 100);
+  emp::scenegraph::OrthoCamera camera(-1, 1);
+  camera.Enable();
+  emp::scenegraph::SimpleEye eye;
+  eye.Enable();
 
-  auto camera = std::make_shared<emp::scenegraph::OrthoCamera>(region);
-  auto eye = std::make_shared<emp::scenegraph::SimpleEye>();
-
-  emp::graphics::Graphics g(canvas, "Roboto", camera, eye);
+  emp::graphics::Graphics g("Roboto");
   canvas.on_resize_event.bind([&](auto &canvas, auto width, auto height) {
     // camera->SetViewbox(canvas.GetRegion().AddDimension(-100, 100));
   });
@@ -275,29 +275,11 @@ int main(int argc, char *argv[]) {
   };
 
   std::vector<pt_type> pts;
+  for (int i = 0; i < 10; ++i)
+    pts.push_back({static_cast<float>(rand()), static_cast<float>(rand())});
 
-  emp::opengl::Framebuffer fb;
-  fb.Bind();
-  emp::opengl::Texture2d tex;
-
-  tex.Bind();
-  tex.Data(0, emp::opengl::Texture2DFormat::RGBA, region.extents().x(),
-           region.extents().y(), emp::opengl::Texture2DFormat::RGBA,
-           emp::opengl::TextureType::UnsignedByte, nullptr);
-
-  tex.SetMinFilter(emp::opengl::TextureMinFilter::Linear);
-  tex.SetMagFilter(emp::opengl::TextureMagFilter::Linear);
-  fb.Attach(tex);
-
-  emp::opengl::Renderbuffer rb(
-    emp::opengl::RenderbufferFormat::Depth24Stencil8);
-  rb.Bind();
-  rb.Store(region.extents().x(), region.extents().y());
-  fb.Attach(rb, emp::opengl::FramebufferAttachment::DepthStencil);
-
-  std::cout << fb.IsComplete() << std::endl;
-
-  // fb.Unbind();
+  emp::graphics::FramebufferRenderTarget rbrt(canvas.GetWidth() / 2,
+                                              canvas.GetHeight() / 2);
 
   canvas.runForever([&](auto &&) {
     g.Clear(emp::opengl::Color::grey(0.8));
@@ -312,8 +294,25 @@ int main(int argc, char *argv[]) {
 
     p(g, std::begin(pts), std::end(pts));
 
-    pts.clear();
-    for (int i = 0; i < 1000; ++i)
-      pts.push_back({static_cast<float>(rand()), static_cast<float>(rand())});
+    auto p2 =
+      cppplot(attributes::X = [](auto &pt) { return -pt.x; },
+              attributes::Y = &pt_type::y, attributes::Color = Color::green(),
+              attributes::Size = 1) +
+      LinearScale<struct attributes::X>{region.min.x(), region.max.x() / 2} +
+      LinearScale<struct attributes::Y>{region.min.y(), region.max.y() / 2} +
+      Scatter2D<struct attributes::X, struct attributes::Y>{} +
+      Line2D<struct attributes::X, struct attributes::Y>{};
+
+    rbrt.Enable();
+    g.Clear(emp::opengl::Color::black(0));
+    p2(g, std::begin(pts), std::end(pts));
+
+    canvas.Enable();
+    g.Texture(rbrt.GetColorTexture())
+      .Draw({
+        emp::graphics::Transform =
+          emp::math::Mat4x4f::Translation(800 / 2, 600 / 2),
+      })
+      .Flush();
   });
 }
