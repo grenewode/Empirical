@@ -144,6 +144,31 @@ struct Scatter2D : geom_tag {
 };
 
 template <typename X, typename Y>
+auto FnScatter2D(
+  const X &, const Y &,
+  const emp::graphics::Mesh &mesh = emp::graphics::Mesh::Polygon(5)) {
+  return [mesh](emp::graphics::Graphics &g, auto begin, auto end) {
+    auto pen = g.Fill(mesh);
+
+    for (; begin != end; ++begin) {
+      auto color{emp::plot::attributes::Color::Get(*begin)};
+      auto x{emp::plot::attributes::X::Get(*begin)};
+      auto y{emp::plot::attributes::Y::Get(*begin)};
+      auto size{
+        emp::plot::attributes::Size::GetOrElse(*begin, [] { return 1; })};
+
+      pen.Draw({
+        emp::graphics::Fill = color,
+        emp::graphics::Transform = emp::math::Mat4x4f::Translation(x, y) *
+                                   emp::math::Mat4x4f::Scale(size),
+      });
+    }
+
+    pen.Flush();
+  };
+}
+
+template <typename X, typename Y>
 struct Line2D : geom_tag {
   public:
   template <typename DATA_ITER>
@@ -282,6 +307,7 @@ int main(int argc, char *argv[]) {
                                               canvas.GetHeight() / 2);
 
   canvas.runForever([&](auto &&) {
+    canvas.Enable();
     g.Clear(emp::opengl::Color::grey(0.8));
 
     auto region = canvas.GetRegion();
@@ -304,7 +330,6 @@ int main(int argc, char *argv[]) {
       Line2D<struct attributes::X, struct attributes::Y>{};
 
     rbrt.Enable();
-    g.Clear(emp::opengl::Color::black(0));
     p2(g, std::begin(pts), std::end(pts));
 
     canvas.Enable();
