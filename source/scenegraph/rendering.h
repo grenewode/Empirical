@@ -92,6 +92,7 @@ namespace emp {
 
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      glDepthMask(GL_TRUE);
 
 #ifdef __EMSCRIPTEN__
       glEnable(GL_MULTISAMPLE);
@@ -151,6 +152,8 @@ namespace emp {
 
         color_texture.SetMinFilter(emp::opengl::TextureMinFilter::Linear);
         color_texture.SetMagFilter(emp::opengl::TextureMagFilter::Linear);
+        color_texture.SetTextureWrap(emp::opengl::TextureWrap::ClampToEdge,
+                                     emp::opengl::TextureWrap::ClampToEdge);
         framebuffer.Attach(color_texture);
 
         depth_stencil_buffer.Bind();
@@ -826,6 +829,9 @@ namespace emp {
 
       void BeginBatch(const emp::opengl::Texture2d &texture, float width,
                       float height) {
+        vertices_buffer.Clear();
+        draw_queue.clear();
+
         this->shader->Use();
         shader_uniforms.projection = Camera::GetCurrentCamera().GetProjection();
         shader_uniforms.view = Eye::GetCurrentEye().CalculateView();
@@ -841,8 +847,6 @@ namespace emp {
         vertices_buffer.PushData({{height, width, 0}, {1, 0}});
 
         vertices_buffer.SendToGPU();
-
-        draw_queue.clear();
       }
 
       void BeginBatch(const emp::opengl::Texture2d &texture) {
@@ -862,7 +866,6 @@ namespace emp {
 
           vertices_buffer.Draw(GL_TRIANGLES);
         }
-        draw_queue.clear();
       }
     };
 
