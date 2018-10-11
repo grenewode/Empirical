@@ -44,39 +44,63 @@ constexpr auto scale_join(const S1 &s1, const S2 &s2) {
   };
 }
 
-template <typename ATTR>
-auto LinearScale(const ATTR &, float dest_min, float dest_max) {
-  return
-    [dest_min, dest_max](emp::graphics::Graphics &g, auto begin, auto end) {
-      using iter_type = decltype(begin);
-      using value_type = typename std::iterator_traits<iter_type>::value_type;
-      using scaled_value_type = decltype(ATTR::Get(std::declval<value_type>()));
+namespace emp__impl_call_or_get {
 
-      scaled_value_type min{
-        std::numeric_limits<std::decay_t<scaled_value_type>>::max()};
-      scaled_value_type max{
-        std::numeric_limits<std::decay_t<scaled_value_type>>::lowest()};
+  template <typename VALUE_FUNC, typename... ARGS>
+  auto CallOrGet(const std::true_type &,  // is_invocable
+                 VALUE_FUNC &&value_func, ARGS &&... args) {
+    return std::forward<VALUE_FUNC>(value_func)(std::forward<ARGS>(args)...);
+  }
 
-      for (auto iter{begin}; iter != end; ++iter) {
-        min = std::min(min, ATTR::Get(*iter));
-        max = std::max(max, ATTR::Get(*iter));
-      }
+  template <typename VALUE_FUNC, typename... ARGS>
+  decltype(auto) CallOrGet(const std::false_type &,  // is_invocable
+                           VALUE_FUNC &&value_func, ARGS &&... args) {
+    return std::forward<VALUE_FUNC>(value_func);
+  }
+}  // namespace emp__impl_call_or_get
 
-      auto scale_function = [=](const auto &value) {
-        auto scaled{((ATTR::Get(value) - min) / (max - min)) *
-                      (dest_max - dest_min) +
-                    dest_min};
+template <typename VALUE_FUNC, typename... ARGS>
+decltype(auto) CallOrGet(VALUE_FUNC &&value_func, ARGS &&... args) {
+  return emp__impl_call_or_get::CallOrGet(
+    emp::is_invocable<VALUE_FUNC, ARGS...>{},
+    std::forward<VALUE_FUNC>(value_func), std::forward<ARGS>(args)...);
+}
 
-        return Merge(ATTR::Make(scaled), value);
-      };
+template <typename ATTR, typename DEST_MIN, typename DEST_MAX>
+auto LinearScale(const ATTR &, DEST_MIN &&dest_min, DEST_MAX &&dest_max) {
+  return [dest_min{std::forward<DEST_MIN>(dest_min)},
+          dest_max{std::forward<DEST_MAX>(dest_max)}](
+           emp::graphics::Graphics &g, auto begin, auto end) {
+    using iter_type = decltype(begin);
+    using value_type = typename std::iterator_traits<iter_type>::value_type;
+    using scaled_value_type = decltype(ATTR::Get(std::declval<value_type>()));
 
-      using result_type = decltype(scale_function(std::declval<value_type>()));
+    scaled_value_type min{
+      std::numeric_limits<std::decay_t<scaled_value_type>>::max()};
+    scaled_value_type max{
+      std::numeric_limits<std::decay_t<scaled_value_type>>::lowest()};
 
-      std::vector<result_type> results;
-      std::transform(begin, end, std::back_inserter(results), scale_function);
+    for (auto iter{begin}; iter != end; ++iter) {
+      min = std::min(min, ATTR::Get(*iter));
+      max = std::max(max, ATTR::Get(*iter));
+    }
 
-      return results;
+    auto scale_function = [min, max, dest_min = CallOrGet(dest_min, g),
+                           dest_max = CallOrGet(dest_max)](const auto &value) {
+      auto scaled{((ATTR::Get(value) - min) / (max - min)) *
+                    (dest_max - dest_min) +
+                  dest_min};
+
+      return Merge(ATTR::Make(scaled), value);
     };
+
+    using result_type = decltype(scale_function(std::declval<value_type>()));
+
+    std::vector<result_type> results;
+    std::transform(begin, end, std::back_inserter(results), scale_function);
+
+    return results;
+  };
 }
 
 template <typename X, typename Y>
@@ -224,7 +248,7 @@ struct NopScale {
 };
 
 template <typename DATA_ITER, typename... AES>
-auto cppplot(DATA_ITER begin, DATA_ITER end, AES &&... aes) {
+auto Plot(DATA_ITER begin, DATA_ITER end, AES &&... aes) {
   auto aes_attrs = emp::tools::MakeAttrs(std::forward<AES>(aes)...);
 
   return CPPPlot<DATA_ITER, decltype(aes_attrs), NopGeom, NopScale>(
@@ -252,6 +276,29 @@ emp::graphics::Graphics &operator<<(
   return g;
 }
 
+namespace helpers {
+  const auto FrameWidth = [] {
+    return emp::graphics::RenderTarget::GetCurrentRenderTarget().GetWidth();
+  };
+  const auto FrameHeight = [] {
+    return emp::graphics::RenderTarget::GetCurrentRenderTarget().GetHeight();
+  };
+
+  template <typename T>
+  struct Ref {
+    T &value;
+    Ref(T &value) : value(value) {}
+
+    operator T &() { return value; }
+    operator const T &() const { return value; }
+  };
+
+  template <typename T>
+  Ref<T> ref(T &value) {
+    return {value};
+  }
+}  // namespace helpers
+
 emp::scenegraph::FreeType ft;
 
 int main(int argc, char *argv[]) {
@@ -278,12 +325,13 @@ int main(int argc, char *argv[]) {
   });
 
   struct pt_type {
-    float x, y;
+    float x, y, w;
   };
 
   std::vector<pt_type> pts;
   for (int i = 0; i < 10; ++i)
-    pts.push_back({static_cast<float>(rand()), static_cast<float>(rand())});
+    pts.push_back({static_cast<float>(rand()), static_cast<float>(rand()),
+                   static_cast<float>(rand())});
 
   emp::graphics::FramebufferRenderTarget rbrt(canvas.GetWidth() / 2,
                                               canvas.GetHeight() / 2);
@@ -292,33 +340,30 @@ int main(int argc, char *argv[]) {
     canvas.Enable();
     g.Clear(emp::opengl::Color::grey(0.8));
 
-    auto region = canvas.GetRegion();
-    g << cppplot(std::begin(pts), std::end(pts), attributes::X = &pt_type::x,
-                 attributes::Y = &pt_type::y, attributes::Color = Color::red(),
-                 attributes::Size = 1) +
-           LinearScale(attributes::X, region.min.x(), region.max.x()) +
-           LinearScale(attributes::Y, region.min.y(), region.max.y()) +
-           Scatter2D(attributes::X, attributes::Y) +
-           Line2D(attributes::X, attributes::Y);
+    auto c = Color::red();
 
-    // auto p2 =
-    //   cppplot(attributes::X = [](auto &pt) { return -pt.x; },
-    //           attributes::Y = &pt_type::y, attributes::Color =
-    //           Color::green(), attributes::Size = 1) +
-    //   LinearScale<struct attributes::X>{region.min.x(), region.max.x() / 2} +
-    //   LinearScale<struct attributes::Y>{region.min.y(), region.max.y() / 2} +
-    //   Scatter2D<struct attributes::X, struct attributes::Y>{} +
-    //   Line2D<struct attributes::X, struct attributes::Y>{};
+    auto plot =
+      Plot(std::begin(pts), std::end(pts), attributes::X = &pt_type::x,
+           attributes::Y = &pt_type::y, attributes::Color = helpers::ref(c),
+           attributes::Size = 1) +
+      LinearScale(attributes::X, 0, helpers::FrameWidth) +
+      LinearScale(attributes::Y, 0, helpers::FrameHeight) +
+      Scatter2D(attributes::X, attributes::Y) +
+      Line2D(attributes::X, attributes::Y);
 
-    // rbrt.Enable();
-    // p2(g, std::begin(pts), std::end(pts));
+    g << plot;
 
-    // canvas.Enable();
-    // g.Texture(rbrt.GetColorTexture())
-    //   .Draw({
-    //     emp::graphics::Transform =
-    //       emp::math::Mat4x4f::Translation(800 / 2, 600 / 2),
-    //   })
-    //   .Flush();
+    rbrt.Enable();
+    c = Color::blue();
+    g.Clear(emp::opengl::Color::black(0));
+    g << plot;
+
+    canvas.Enable();
+    g.Texture(rbrt.GetColorTexture())
+      .Draw({
+        emp::graphics::Transform =
+          emp::math::Mat4x4f::Translation(800 / 2, 600 / 2),
+      })
+      .Flush();
   });
 }
