@@ -28,74 +28,26 @@
 #include <chrono>
 #include <cstdlib>
 
-struct geom_tag {};
-struct scale_tag {};
-
-template <typename G1, typename G2>
-struct JoinGeometries : geom_tag {
-  G1 first;
-  G2 second;
-
-  JoinGeometries(G1 first, G2 second) : first(first), second(second) {}
-
-  template <typename DATA_ITER>
-  void operator()(emp::graphics::Graphics &g, DATA_ITER begin,
-                  DATA_ITER end) const {
-    first(g, begin, end);
-    second(g, begin, end);
-  }
-};
-
 template <typename G1, typename G2>
 constexpr auto geom_join(const G1 &g1, const G2 &g2) {
-  return [g1, g2](auto begin, auto end) {
-    auto g1_fn{g1(begin, end)};
-    auto g2_fn{g2(begin, end)};
-    return [begin, end, g1_fn, g2_fn](emp::graphics::Graphics &g) {
-      g1_fn(g);
-      g2_fn(g);
-    };
+  return [g1, g2](emp::graphics::Graphics &g, auto begin, auto end) {
+    g1(g, begin, end);
+    g2(g, begin, end);
   };
 }
 
 template <typename S1, typename S2>
-struct JoinScales : scale_tag {
-  S1 first;
-  S2 second;
-
-  JoinScales(S1 first, S2 second) : first(first), second(second) {}
-
-  template <typename DATA_ITER>
-  auto operator()(emp::graphics::Graphics &g, DATA_ITER begin,
-                  DATA_ITER end) const {
-    auto scaled = first(g, begin, end);
-    return second(g, std::begin(scaled), std::end(scaled));
-  }
-};
-
-template <typename S1, typename S2>
-constexpr JoinScales<S1, S2> scale_join(const S1 &s1, const S2 &s2) {
-  return {s1, s2};
-}
-
-template <typename S1, typename S2>
-constexpr auto join_scales(const S1 &s1, const S2 &s2) {
-  return [s1, s2](auto begin, auto end) {
-    auto s1_r = s1(begin, end);
-    auto s2_r = s2(std::begin(s1_r.first), std::end(s1_r.first));
-
-    return [begin, end, s1_fn = s1_r.second, s2_r](emp::graphics::Graphics &g) {
-      s1_r.second(g);
-      s2_r.second(g);
-    };
+constexpr auto scale_join(const S1 &s1, const S2 &s2) {
+  return [s1, s2](emp::graphics::Graphics &g, auto begin, auto end) {
+    auto post = s1(g, begin, end);
+    return s2(g, std::begin(post), std::end(post));
   };
 }
 
 template <typename ATTR>
 auto LinearScale(const ATTR &, float dest_min, float dest_max) {
-  return [dest_min, dest_max](auto begin, auto end) {
-    return [dest_min, dest_max, begin = begin,
-            end = end](emp::graphics::Graphics &g) {
+  return
+    [dest_min, dest_max](emp::graphics::Graphics &g, auto begin, auto end) {
       using iter_type = decltype(begin);
       using value_type = typename std::iterator_traits<iter_type>::value_type;
       using scaled_value_type = decltype(ATTR::Get(std::declval<value_type>()));
@@ -125,54 +77,49 @@ auto LinearScale(const ATTR &, float dest_min, float dest_max) {
 
       return results;
     };
-  };
 }
 
 template <typename X, typename Y>
 auto Scatter2D(
   const X &, const Y &,
   const emp::graphics::Mesh &mesh = emp::graphics::Mesh::Polygon(5)) {
-  return [mesh](auto begin, auto end) {
-    return [begin = begin, end = end, mesh](emp::graphics::Graphics &g) {
-      auto pen = g.Fill(mesh);
+  return [mesh](emp::graphics::Graphics &g, auto begin, auto end) {
+    auto pen = g.Fill(mesh);
 
-      for (; begin != end; ++begin) {
-        auto color{emp::plot::attributes::Color::Get(*begin)};
-        auto x{emp::plot::attributes::X::Get(*begin)};
-        auto y{emp::plot::attributes::Y::Get(*begin)};
-        auto size{
-          emp::plot::attributes::Size::GetOrElse(*begin, [] { return 1; })};
+    for (; begin != end; ++begin) {
+      auto color{emp::plot::attributes::Color::Get(*begin)};
+      auto x{emp::plot::attributes::X::Get(*begin)};
+      auto y{emp::plot::attributes::Y::Get(*begin)};
+      auto size{
+        emp::plot::attributes::Size::GetOrElse(*begin, [] { return 1; })};
 
-        pen.Draw({
-          emp::graphics::Fill = color,
-          emp::graphics::Transform = emp::math::Mat4x4f::Translation(x, y) *
-                                     emp::math::Mat4x4f::Scale(size),
-        });
-      }
+      pen.Draw({
+        emp::graphics::Fill = color,
+        emp::graphics::Transform = emp::math::Mat4x4f::Translation(x, y) *
+                                   emp::math::Mat4x4f::Scale(size),
+      });
+    }
 
-      pen.Flush();
-    };
+    pen.Flush();
   };
 }
 
 template <typename X, typename Y>
 auto Line2D(const X &, const Y &) {
-  return [](auto begin, auto end) {
-    return [begin, end](emp::graphics::Graphics &g) {
-      g.Line(begin, end,
-             MakeAttrs(
-               emp::graphics::Vertex =
-                 [](auto &pt) {
-                   return emp::math::Vec2f{
-                     X::Get(pt),
-                     Y::Get(pt),
-                   };
-                 },
-               emp::graphics::Stroke = emp::plot::attributes::Color::Get,
-               emp::graphics::StrokeWeight = emp::plot::attributes::Size::Get))
-        .Draw(emp::graphics::Transform = emp::math::Mat4x4f::Identity())
-        .Flush();
-    };
+  return [](emp::graphics::Graphics &g, auto begin, auto end) {
+    g.Line(begin, end,
+           MakeAttrs(
+             emp::graphics::Vertex =
+               [](auto &pt) {
+                 return emp::math::Vec2f{
+                   X::Get(pt),
+                   Y::Get(pt),
+                 };
+               },
+             emp::graphics::Stroke = emp::plot::attributes::Color::Get,
+             emp::graphics::StrokeWeight = emp::plot::attributes::Size::Get))
+      .Draw(emp::graphics::Transform = emp::math::Mat4x4f::Identity())
+      .Flush();
   };
 }
 
@@ -181,12 +128,13 @@ struct is_a_scale {};
 
 template <typename ITER_TYPE, typename ELEMENT>
 struct which_plot_element
-  : std::conditional_t<
-      std::is_same<decltype(std::declval<ELEMENT>()(std::declval<ITER_TYPE>(),
-                                                    std::declval<ITER_TYPE>())(
-                     std::declval<emp::graphics::Graphics &>())),
-                   void>::value,
-      is_a_geom, is_a_scale> {};
+  : std::conditional_t<std::is_same<decltype(std::declval<ELEMENT>()(
+                                      std::declval<emp::graphics::Graphics &>(),
+                                      std::declval<ITER_TYPE>(),  // begin
+                                      std::declval<ITER_TYPE>()  // end
+                                      )),
+                                    void>::value,
+                       is_a_geom, is_a_scale> {};
 
 // TODO: graphics (frame?) should know it's size & allow stacking transforms
 
@@ -208,10 +156,13 @@ class CPPPlot {
   using aes_iterator = typename aes_mapping_type::iterator;
 
   public:
-  using scale_mapping_type = decltype(std::declval<SCALE>()(
-    std::declval<aes_iterator>(),  // begin
-    std::declval<aes_iterator>()  // end
-    )(std::declval<emp::graphics::Graphics &>()));
+  using scale_mapping_type =
+    decltype(std::declval<SCALE>()(std::declval<emp::graphics::Graphics &>(),
+                                   std::declval<aes_iterator>(),  // begin
+                                   std::declval<aes_iterator>()  // end
+                                   ));
+  using scale_mapping_data_type = typename std::iterator_traits<decltype(
+    std::begin(std::declval<scale_mapping_type>()))>::value_type;
 
   constexpr CPPPlot(DATA_ITER begin, DATA_ITER end, AES aes_mapping,
                     GEOM geometry, SCALE scale)
@@ -251,27 +202,24 @@ class CPPPlot {
   auto append(const E &element) const {
     // TODO: replace aes_mapping_type with scale_mapping_type
     return impl_append(
-      element,
-      which_plot_element<typename std::vector<aes_mapping_data_type>::iterator,
-                         E>{});
+      element, which_plot_element<
+                 typename std::vector<scale_mapping_data_type>::iterator, E>{});
   }
 };
 
-struct NopGeom : geom_tag {
+struct NopGeom {
   template <typename DATA_ITER>
-  auto operator()(DATA_ITER begin, DATA_ITER end) const {
-    return [](auto &&...) {};
-  }
+  void operator()(emp::graphics::Graphics &, DATA_ITER begin,
+                  DATA_ITER end) const {}
 };
 
-struct NopScale : scale_tag {
+struct NopScale {
   template <typename DATA_ITER>
-  auto operator()(DATA_ITER begin, DATA_ITER end) const {
-    return [begin, end](auto &&...) {
-      std::vector<typename std::iterator_traits<DATA_ITER>::value_type> data;
-      for (; begin != end; ++begin) data.emplace_back(*begin);
-      return data;
-    };
+  auto operator()(emp::graphics::Graphics &, DATA_ITER begin,
+                  DATA_ITER end) const {
+    std::vector<typename std::iterator_traits<DATA_ITER>::value_type> data;
+    for (; begin != end; ++begin) data.emplace_back(*begin);
+    return data;
   }
 };
 
@@ -294,6 +242,14 @@ template <typename DATA_ITER, typename AES, typename GEOM, typename SCALE,
 auto operator+(const E &element,
                const CPPPlot<DATA_ITER, AES, GEOM, SCALE> &cppplot) {
   return cppplot.append(element);
+}
+
+template <typename DATA_ITER, typename AES, typename GEOM, typename SCALE>
+emp::graphics::Graphics &operator<<(
+  emp::graphics::Graphics &g,
+  const CPPPlot<DATA_ITER, AES, GEOM, SCALE> &cppplot) {
+  cppplot(g);
+  return g;
 }
 
 emp::scenegraph::FreeType ft;
@@ -337,15 +293,13 @@ int main(int argc, char *argv[]) {
     g.Clear(emp::opengl::Color::grey(0.8));
 
     auto region = canvas.GetRegion();
-    auto p = cppplot(std::begin(pts), std::end(pts),
-                     attributes::X = &pt_type::x, attributes::Y = &pt_type::y,
-                     attributes::Color = Color::red(), attributes::Size = 1) +
-             LinearScale(attributes::X, region.min.x(), region.max.x()) +
-             LinearScale(attributes::Y, region.min.y(), region.max.y()) +
-             Scatter2D(attributes::X, attributes::Y) +
-             Line2D(attributes::X, attributes::Y);
-
-    p(g);
+    g << cppplot(std::begin(pts), std::end(pts), attributes::X = &pt_type::x,
+                 attributes::Y = &pt_type::y, attributes::Color = Color::red(),
+                 attributes::Size = 1) +
+           LinearScale(attributes::X, region.min.x(), region.max.x()) +
+           LinearScale(attributes::Y, region.min.y(), region.max.y()) +
+           Scatter2D(attributes::X, attributes::Y) +
+           Line2D(attributes::X, attributes::Y);
 
     // auto p2 =
     //   cppplot(attributes::X = [](auto &pt) { return -pt.x; },
