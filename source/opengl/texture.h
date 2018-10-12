@@ -496,12 +496,25 @@ namespace emp {
     class Texture<TextureBindTarget::TwoDimensional>
       : public __impl_emp_opengl_texture_base::Texture2d<
           TextureBindTarget::TwoDimensional> {
+      public:
       using __impl_emp_opengl_texture_base::Texture2d<
         TextureBindTarget::TwoDimensional>::target;
       using __impl_emp_opengl_texture_base::Texture2d<target>::Texture2d;
     };
 
+    template <>
+    class Texture<TextureBindTarget::TwoDimensionalMultisample>
+      : public __impl_emp_opengl_texture_base::Texture2d<
+          TextureBindTarget::TwoDimensionalMultisample> {
+      public:
+      using __impl_emp_opengl_texture_base::Texture2d<
+        TextureBindTarget::TwoDimensionalMultisample>::target;
+      using __impl_emp_opengl_texture_base::Texture2d<target>::Texture2d;
+    };
+
     using Texture2d = Texture<TextureBindTarget::TwoDimensional>;
+    using Texture2dMultisample =
+      Texture<TextureBindTarget::TwoDimensionalMultisample>;
 
     template <TextureBindTarget TARGET>
     void setUniform(

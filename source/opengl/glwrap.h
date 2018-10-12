@@ -621,15 +621,16 @@ namespace emp {
         emp_checked_gl_void(glBindFramebuffer(GL_FRAMEBUFFER, 0));
       }
 
+      template <typename TEX>
       void Attach(
-        const Texture2d& target,
+        const TEX& target,
         FramebufferAttachment attachement = FramebufferAttachment::Color0,
         int mipmap_level = 0) {
         emp_assert(handle == bound_framebuffer,
                    "the framebuffer must be bound");
         emp_checked_gl_void(glFramebufferTexture2D(
-          GL_FRAMEBUFFER, static_cast<GLenum>(attachement), GL_TEXTURE_2D,
-          target, mipmap_level));
+          GL_FRAMEBUFFER, static_cast<GLenum>(attachement),
+          static_cast<GLenum>(TEX::target), target, mipmap_level));
       }
 
       void Attach(const Renderbuffer& renderbuffer,

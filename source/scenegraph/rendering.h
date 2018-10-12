@@ -93,10 +93,7 @@ namespace emp {
       glEnable(GL_BLEND);
       glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
       glDepthMask(GL_TRUE);
-
-#ifdef __EMSCRIPTEN__
       glEnable(GL_MULTISAMPLE);
-#endif
 
       RenderTarget::current_render_target = this;
       OnEnable();
@@ -169,9 +166,19 @@ namespace emp {
 
       bool IsComplete() const { return framebuffer.IsComplete(); }
 
-      const emp::opengl::Texture2d &GetColorTexture() const {
-        return color_texture;
+      const auto &GetColorTexture() const { return color_texture; }
+
+      void Blit(float x, float y, float destWidth, float destHeight) {
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+
+        glDrawBuffer(GL_BACK);
+
+        glBlitFramebuffer(0, 0, GetWidth(), GetHeight(), x, y, x + destWidth,
+                          y + destHeight, GL_COLOR_BUFFER_BIT, GL_LINEAR);
       }
+
+      void Blit(float x, float y) { Blit(x, y, GetWidth(), GetHeight()); }
 
       protected:
       void OnEnable() override { framebuffer.Bind(); }
@@ -827,8 +834,8 @@ namespace emp {
         });
       }
 
-      void BeginBatch(const emp::opengl::Texture2d &texture, float width,
-                      float height) {
+      template <typename TEX>
+      void BeginBatch(const TEX &texture, float width, float height) {
         vertices_buffer.Clear();
         draw_queue.clear();
 
@@ -849,7 +856,8 @@ namespace emp {
         vertices_buffer.SendToGPU();
       }
 
-      void BeginBatch(const emp::opengl::Texture2d &texture) {
+      template <typename TEX>
+      void BeginBatch(const TEX &texture) {
         BeginBatch(texture, texture.GetWidth(), texture.GetHeight());
       }
 

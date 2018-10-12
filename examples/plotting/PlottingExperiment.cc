@@ -67,10 +67,9 @@ decltype(auto) CallOrGet(VALUE_FUNC &&value_func, ARGS &&... args) {
 }
 
 template <typename ATTR, typename DEST_MIN, typename DEST_MAX>
-auto LinearScale(const ATTR &, DEST_MIN &&dest_min, DEST_MAX &&dest_max) {
-  return [dest_min{std::forward<DEST_MIN>(dest_min)},
-          dest_max{std::forward<DEST_MAX>(dest_max)}](
-           emp::graphics::Graphics &g, auto begin, auto end) {
+auto LinearScale(const ATTR &, DEST_MIN dest_min, DEST_MAX dest_max) {
+  return [dest_min, dest_max](emp::graphics::Graphics &g, auto begin,
+                              auto end) {
     using iter_type = decltype(begin);
     using value_type = typename std::iterator_traits<iter_type>::value_type;
     using scaled_value_type = decltype(ATTR::Get(std::declval<value_type>()));
@@ -340,30 +339,12 @@ int main(int argc, char *argv[]) {
     canvas.Enable();
     g.Clear(emp::opengl::Color::grey(0.8));
 
-    auto c = Color::red();
-
-    auto plot =
-      Plot(std::begin(pts), std::end(pts), attributes::X = &pt_type::x,
-           attributes::Y = &pt_type::y, attributes::Color = helpers::ref(c),
-           attributes::Size = 1) +
-      LinearScale(attributes::X, 0, helpers::FrameWidth) +
-      LinearScale(attributes::Y, 0, helpers::FrameHeight) +
-      Scatter2D(attributes::X, attributes::Y) +
-      Line2D(attributes::X, attributes::Y);
-
-    g << plot;
-
-    rbrt.Enable();
-    c = Color::blue();
-    g.Clear(emp::opengl::Color::black(0));
-    g << plot;
-
-    canvas.Enable();
-    g.Texture(rbrt.GetColorTexture())
-      .Draw({
-        emp::graphics::Transform =
-          emp::math::Mat4x4f::Translation(800 / 2, 600 / 2),
-      })
-      .Flush();
+    g << Plot(std::begin(pts), std::end(pts), attributes::X = &pt_type::x,
+              attributes::Y = &pt_type::y, attributes::Color = Color::black(),
+              attributes::Size = 1) +
+           LinearScale(attributes::X, 0, helpers::FrameWidth) +
+           LinearScale(attributes::Y, 0, helpers::FrameHeight) +
+           Scatter2D(attributes::X, attributes::Y) +
+           Line2D(attributes::X, attributes::Y);
   });
 }
